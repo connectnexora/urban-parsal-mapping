@@ -6,7 +6,7 @@ import { resolveAssetUrl } from '../services/api.js';
  * POST /detect/parcels response — nothing hardcoded. Always discloses
  * that boundaries are AI-estimated/approximate, not legal cadastre.
  */
-export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting }) {
+export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, selectedParcelId, onSelectParcel }) {
   if (isExtracting) {
     return (
       <section className="card detect-section">
@@ -85,16 +85,21 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
         <div className="table-wrap">
           <table className="det-table">
             <thead>
-              <tr><th>Parcel</th><th>Area (m² est.)</th><th>Perimeter (m est.)</th><th>Conf. (heur.)</th><th>Vertices</th></tr>
+              <tr><th>Parcel</th><th>Area (m² est.)</th><th>Perimeter (m est.)</th><th>Conf. (heur.)</th><th>Vertices</th><th>Map</th></tr>
             </thead>
             <tbody>
               {parcels.map((p) => (
-                <tr key={p.parcel_id}>
+                <tr key={p.parcel_id} className={p.parcel_id === selectedParcelId ? 'row-selected' : ''}>
                   <td><b>{p.parcel_id}</b></td>
                   <td>{p.area}</td>
                   <td>{p.perimeter}</td>
                   <td>{Number(p.confidence).toFixed(3)}</td>
                   <td>{p.num_vertices}</td>
+                  <td>
+                    <button className="btn small" onClick={() => onSelectParcel?.(p.parcel_id)}>
+                      {p.parcel_id === selectedParcelId ? 'Selected ✓' : 'Show on map'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

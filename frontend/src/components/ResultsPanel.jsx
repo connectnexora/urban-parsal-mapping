@@ -1,13 +1,8 @@
-<<<<<<< HEAD
 export default function ResultsPanel({ backendStatus, healthData, detection, features, parcelResult }) {
-=======
-export default function ResultsPanel({ backendStatus, healthData, detection, parcelResult, features }) {
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   const dot = backendStatus === 'ok' ? 'dot ok' : backendStatus === 'down' ? 'dot bad' : 'dot';
   const label =
     backendStatus === 'ok' ? 'Backend: connected' : backendStatus === 'down' ? 'Backend: offline' : 'Backend: not tested';
 
-<<<<<<< HEAD
   const hasResult = detection != null;
   const hasFeatures = features != null;
   const hasParcels = parcelResult != null;
@@ -18,16 +13,6 @@ export default function ResultsPanel({ backendStatus, healthData, detection, par
   const counts = features?.counts || {};
   const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
   const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
-=======
-  const hasDet = detection != null;
-  const buildings = hasDet ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
-  const avgConf = hasDet ? (detection.average_confidence ?? 0).toFixed(2) : '—';
-  const hasParcels = parcelResult != null;
-  const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
-  const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
-  const hasFeatures = features != null;
-  const counts = features?.counts || {};
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
   return (
     <section className="card">

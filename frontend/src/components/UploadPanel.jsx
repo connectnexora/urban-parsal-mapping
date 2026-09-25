@@ -57,17 +57,10 @@ export default function UploadPanel({
   setOriginalPreview,
   isDetecting,
   setIsDetecting,
-<<<<<<< HEAD
-  setFeatures,
-  setFeaturesError,
-  setParcelResult,
-  setParcelError,
-=======
   setParcelResult,
   setParcelError,
   setFeatures,
   setFeaturesError,
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   isExtracting,
   setIsExtracting,
 }) {
@@ -84,11 +77,8 @@ export default function UploadPanel({
   const [parcelStatus, setParcelStatus] = useState(null);
   const [confidence, setConfidence] = useState(0.25);
   const [gsd, setGsd] = useState(0.1);
-<<<<<<< HEAD
-=======
   // Which extraction is running: 'features' | 'parcels' | null.
   const [extractKind, setExtractKind] = useState(null);
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   const urlRef = useRef(null);
 
   const refreshStatuses = async () => {
@@ -106,7 +96,6 @@ export default function UploadPanel({
     }
   };
 
-<<<<<<< HEAD
   // Alias kept for backwards-compat call sites.
   const refreshModelStatus = refreshStatuses;
 
@@ -118,8 +107,6 @@ export default function UploadPanel({
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
   }, []);
 
-=======
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   const clearPreview = () => {
     if (urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
@@ -129,10 +116,7 @@ export default function UploadPanel({
   };
 
   const working = busy || isDetecting || isExtracting;
-<<<<<<< HEAD
   const aiBusy = working;
-=======
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -143,12 +127,8 @@ export default function UploadPanel({
     setProgress(null);
     setMessage('');
     setDetectionError?.(null);
-    setFeaturesError?.(null);
     setParcelError?.(null);
-<<<<<<< HEAD
-=======
     setFeaturesError?.(null);
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
     const err = validateFile(f);
     if (err) {
@@ -229,18 +209,11 @@ export default function UploadPanel({
     }
   };
 
-<<<<<<< HEAD
   const failMsg = (err) => {
     const detail = err.response?.data?.detail;
     return typeof detail === 'object' ? detail?.help || detail?.message : detail;
   };
 
-  const onDetect = async () => {
-    if (!file || isDetecting) return;
-    setIsDetecting(true);
-    setDetectionError?.(null);
-    setMessage('Running YOLO building detection… (first run may take a while)');
-=======
   const runInference = async (kind) => {
     if (!file || isDetecting || isExtracting) return;
     const isFeatures = kind === 'features';
@@ -253,16 +226,12 @@ export default function UploadPanel({
     setDetectionError?.(null);
     setFeaturesError?.(null);
     setMessage(isFeatures ? 'Running feature-extraction pipeline…' : 'Running YOLO building detection… (first run may take a while)');
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
     setMessageOk(false);
     try {
-      const res = await detectBuildings(file, { confidence });
-      setDetection?.(res);
+      const res = isFeatures
+        ? await detectFeatures(file, { confidence })
+        : await detectBuildings(file, { confidence });
       setBackendStatus('ok');
-<<<<<<< HEAD
-      const n = res.building_count ?? res.detections?.length ?? 0;
-      setMessage(`Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`);
-=======
       if (isFeatures) {
         setFeatures?.(res);
         const c = res.counts || {};
@@ -278,7 +247,6 @@ export default function UploadPanel({
           `Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`
         );
       }
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
       setMessageOk(true);
       await refreshStatuses();
     } catch (err) {
@@ -289,19 +257,6 @@ export default function UploadPanel({
           `Model unavailable (HTTP 503). ` +
           (help || err.message) +
           ` See models/README.md — place a building-trained YOLO weight in models/ and restart the backend.`;
-<<<<<<< HEAD
-        setDetection?.(null);
-        setDetectionError?.(msg);
-        setMessage(msg);
-      } else {
-        const msg = `Detection failed: ${help || err.message}`;
-        setDetection?.(null);
-        setDetectionError?.(msg);
-        setMessage(msg);
-      }
-    } finally {
-      setIsDetecting(false);
-=======
         if (isFeatures) setFeaturesError?.(msg);
         else {
           setDetection?.(null);
@@ -324,16 +279,11 @@ export default function UploadPanel({
       } else {
         setIsDetecting(false);
       }
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
     }
   };
 
   const onExtractParcels = async () => {
-<<<<<<< HEAD
-    if (!file || isExtracting) return;
-=======
     if (!file || isExtracting || isDetecting) return;
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
     setIsExtracting(true);
     setExtractKind('parcels');
     setParcelError?.(null);
@@ -347,13 +297,7 @@ export default function UploadPanel({
       setMessageOk(true);
       await refreshStatuses();
     } catch (err) {
-<<<<<<< HEAD
       const msg = `Parcel extraction failed: ${failMsg(err) || err.message}`;
-=======
-      const detail = err.response?.data?.detail;
-      const help = typeof detail === 'object' ? detail?.help || detail?.message : detail;
-      const msg = `Parcel extraction failed: ${help || err.message}`;
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
       setParcelResult?.(null);
       setParcelError?.(msg);
       setMessage(msg);
@@ -362,47 +306,6 @@ export default function UploadPanel({
       setExtractKind(null);
     }
   };
-<<<<<<< HEAD
-
-  const runFeatures = async () => {
-    if (!file || isDetecting || isExtracting) return;
-    setIsExtracting(true);
-    setFeaturesError?.(null);
-    setMessage('Running feature-extraction pipeline…');
-    setMessageOk(false);
-    try {
-      const res = await detectFeatures(file, { confidence });
-      setFeatures?.(res);
-      setBackendStatus('ok');
-      const c = res.counts || {};
-      setMessage(
-        `Features extracted — buildings ${c.buildings ?? 0}, roads ${c.roads ?? 0}, ` +
-        `vegetation ${c.vegetation ?? 0}, water ${c.water ?? 0}, other ${c.other ?? 0}. ` +
-        `Annotated: ${res.annotated_image}`
-      );
-      setMessageOk(true);
-      await refreshStatuses();
-    } catch (err) {
-      const status = err.response?.status;
-      const help = failMsg(err);
-      if (status === 503) {
-        const msg =
-          `Model unavailable (HTTP 503). ` +
-          (help || err.message) +
-          ` See models/README.md — place a building-trained YOLO weight in models/ and restart the backend.`;
-        setFeaturesError?.(msg);
-        setMessage(msg);
-      } else {
-        const msg = `AI run failed: ${help || err.message}`;
-        setFeaturesError?.(msg);
-        setMessage(msg);
-      }
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-=======
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
   const dimsLabel = localDims
     ? `${localDims.w} × ${localDims.h} px`
@@ -434,11 +337,7 @@ export default function UploadPanel({
 
       <ol className="steps">
         <li className="done">✓ Project structure ready</li>
-<<<<<<< HEAD
         <li className="done">✓ Backend connectivity + upload</li>
-=======
-        <li className="done">✓ Backend connectivity</li>
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
         <li className="active">→ Buildings (YOLO) + Parcels (polygons) + Features</li>
         <li>○ Report</li>
       </ol>
@@ -504,27 +403,15 @@ export default function UploadPanel({
       <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy}>
         {busy ? 'Uploading…' : 'Upload to Backend'}
       </button>
-<<<<<<< HEAD
-      <button className="btn detect" onClick={onDetect} disabled={!file || !!fileError || aiBusy}>
-        {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
-      </button>
-      <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || aiBusy}>
-        {isExtracting ? 'Working…' : 'Extract Parcels (polygons)'}
-      </button>
-      <button className="btn process" onClick={runFeatures} disabled={!file || !!fileError || working}>
-        {isExtracting ? 'Extracting features…' : 'Process Image (AI Features)'}
-      </button>
-=======
-      <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || aiBusy}>
-        {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
-      </button>
       <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || aiBusy}>
         {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
       </button>
       <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || aiBusy}>
         {isExtracting && extractKind === 'parcels' ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
       </button>
->>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
+      <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || working}>
+        {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
+      </button>
       <button className="btn ghost" onClick={testConnection} disabled={aiBusy}>
         Test Backend Connection
       </button>

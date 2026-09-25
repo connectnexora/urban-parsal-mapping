@@ -69,6 +69,22 @@
 .drop:hover { border-color: var(--accent); }
 .preview { width: 100%; border-radius: 10px; margin-top: 10px; max-height: 220px; object-fit: cover; }
 
+.map-head-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  align-items: flex-start; flex-wrap: wrap; padding: 16px 18px 0;
+}
+.map-head-row .btn.small { width: auto; flex: none; margin-top: 2px; }
+
+.parcel-detail { margin: 0 28px 18px; border-color: rgba(56, 189, 248, 0.45); }
+.parcel-detail-head {
+  display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+}
+.parcel-detail-head .btn.small { width: auto; flex: none; }
+.parcel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+@media (max-width: 860px) { .parcel-grid { grid-template-columns: 1fr 1fr; } }
+.det-table tr.row-selected td { background: rgba(56, 189, 248, 0.12); }
+.det-table .btn.small { width: auto; padding: 6px 10px; font-size: 12px; }
+
 .map-wrap { overflow: hidden; padding: 0; }
 .map-head { padding: 16px 18px 0; }
 .leaflet-container { height: 560px; width: 100%; border-radius: 0 0 16px 16px; z-index: 1; }
