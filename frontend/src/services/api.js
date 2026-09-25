@@ -3,7 +3,8 @@ import axios from 'axios';
 // Base URL of the FastAPI backend.
 // - Local dev default: http://localhost:8000
 // - Override with frontend/.env file: VITE_API_URL=http://localhost:8000
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Trailing slashes are trimmed so asset URLs never get a double slash.
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 const client = axios.create({
   baseURL: API_BASE,
@@ -53,7 +54,8 @@ export async function uploadImage(file, onProgress) {
   // Third arg preserves the original filename in the multipart payload.
   form.append('file', file, file.name);
   const res = await client.post('/api/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // NOTE: no manual Content-Type — axios/the browser must set
+    // multipart/form-data with its boundary, or uploads break (HTTP 422).
     // Drone frames can be tens of MB — give the upload room to finish.
     timeout: 120000,
     onUploadProgress: (e) => {
@@ -78,7 +80,6 @@ export async function detectBuildings(file, { confidence = 0.25, iou = 0.45 } = 
   form.append('file', file, file.name);
   const res = await detectClient.post('/detect/buildings', form, {
     params: { confidence, iou },
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
 }
@@ -99,7 +100,6 @@ export async function extractParcels(
   form.append('file', file, file.name);
   const res = await parcelClient.post('/detect/parcels', form, {
     params: { gsd, epsilon, conf, max_parcels: maxParcels },
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
 }
@@ -117,12 +117,15 @@ export async function detectFeatures(file, { confidence = 0.25, iou = 0.45 } = {
   form.append('file', file, file.name);
   const res = await detectClient.post('/detect/features', form, {
     params: { confidence, iou },
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
 }
 
-/** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL. */
+/** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL.
+ * Absolute http(s) URLs pass through untouched — that is how demo-mode
+ * images (served by the frontend origin, e.g. `/demo/...` absolutized in
+ * App.jsx) survive this helper. Raw `/demo/...` paths must never reach
+ * here or they would wrongly resolve to the backend host. */
 export function resolveAssetUrl(path) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -147,7 +150,6 @@ export async function detectChanges(
   form.append('file_b', fileB, fileB.name);
   const res = await changeClient.post('/detect/changes', form, {
     params: { confidence, iou, align, gsd },
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
 }

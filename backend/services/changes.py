@@ -30,7 +30,11 @@ try:
         _is_building_label,
     )
     from services.features import _is_road_label
-    from services.parcels import extract_parcels, get_parcel_status
+    from services.parcels import (
+        extract_parcels,
+        get_parcel_status,
+        detect_georeference,
+    )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.detection import (
         get_model_status,
@@ -38,13 +42,18 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
         _is_building_label,
     )
     from backend.services.features import _is_road_label
-    from backend.services.parcels import extract_parcels, get_parcel_status
+    from backend.services.parcels import (
+        extract_parcels,
+        get_parcel_status,
+        detect_georeference,
+    )
 
 CHANGE_STATUSES = ("UNCHANGED", "NEW", "REMOVED", "CHANGED")
 
 # BGR for OpenCV annotation, HEX for the frontend legend.
 CHANGE_COLORS_BGR = {
-    "NEW": (46, 204, 113),       # green
+    # NOTE: BGR order for cv2 — NEW green #2ECC71 is (113, 204, 46) in BGR.
+    "NEW": (113, 204, 46),       # green
     "REMOVED": (113, 113, 248),  # red-ish
     "CHANGED": (36, 191, 251),   # amber
     "UNCHANGED": (160, 160, 160),  # gray
@@ -233,6 +242,17 @@ def detect_changes(
     iou = float(max(0.01, min(0.99, iou)))
     gsd = float(max(0.001, min(10.0, gsd)))
 
+    # Change areas honour embedded GeoTIFF scale like the parcel pipeline;
+    # otherwise the caller's (estimated) GSD is used and labelled as such.
+    gsd_source = f"assumed GSD {gsd} m/px (estimated image-based area)"
+    try:
+        _georef = detect_georeference(image_a)
+        if _georef.get("georeferenced") and _georef.get("gsd"):
+            gsd = float(_georef["gsd"])
+            gsd_source = f"embedded GeoTIFF tags ({_georef.get('detail')})"
+    except Exception:
+        pass
+
     a_full = _read_bgr(image_a)
     b_full = _read_bgr(image_b)
     if a_full is None:
@@ -287,14 +307,42 @@ def detect_changes(
             "YOLO model unavailable — building/road change categories are empty. "
             "Structural diff + parcel fallback still run."
         )
-    # B boxes live in B pixels; map them into A space (B was resampled to A).
+    # B boxes live in B pixels; map them into A space. When ECC alignment
+    # succeeded, apply the *inverse* affine (warpAffine with INVERSE_MAP
+    # samples B at M(p), so a B feature at q appears at M^-1(q)); the warp
+    # is expressed in working resolution. Otherwise fall back to the
+    # resample scale (correct only when the frames are pre-registered).
     sx, sy = (aw / bw) if bw else 1.0, (ah / bh) if bh else 1.0
-    dets_b_a = [
-        {**d, "bbox": [
-            int(round(d["bbox"][0] * sx)), int(round(d["bbox"][1] * sy)),
-            int(round(d["bbox"][2] * sx)), int(round(d["bbox"][3] * sy))]}
-        for d in dets_b
-    ]
+    warp_inv = None
+    if aligned:
+        try:
+            import numpy as _np
+
+            _A = warp[:, :2].astype(float)
+            _t = warp[:, 2].astype(float)
+            _Ai = _np.linalg.inv(_A)
+            warp_inv = _np.hstack([_Ai, -(_Ai @ _t)[:, None]])
+        except Exception as exc:
+            warp_inv = None
+            warnings.append(f"ECC warp is degenerate ({exc}); B-side geometry mapped by resampling only.")
+
+    def _b_to_a_pt(x, y):
+        if warp_inv is not None:
+            wx, wy = float(x) * a_scale, float(y) * a_scale
+            qx = float(warp_inv[0, 0] * wx + warp_inv[0, 1] * wy + warp_inv[0, 2])
+            qy = float(warp_inv[1, 0] * wx + warp_inv[1, 1] * wy + warp_inv[1, 2])
+            return qx * to_a, qy * to_a
+        return float(x) * sx, float(y) * sy
+
+    def _b_to_a_box(bbox):
+        corners = [_b_to_a_pt(bbox[0], bbox[1]), _b_to_a_pt(bbox[2], bbox[1]),
+                   _b_to_a_pt(bbox[2], bbox[3]), _b_to_a_pt(bbox[0], bbox[3])]
+        xs = [p[0] for p in corners]
+        ys = [p[1] for p in corners]
+        return [int(round(min(xs))), int(round(min(ys))),
+                int(round(max(xs))), int(round(max(ys)))]
+
+    dets_b_a = [{**d, "bbox": _b_to_a_box(d["bbox"])} for d in dets_b]
 
     # --- Parcels on both frames (bounded cost; guarded).
     parcels_a: List[Dict[str, Any]] = []
@@ -309,12 +357,12 @@ def detect_changes(
         try:
             res_b = extract_parcels(
                 image_b, gsd=gsd, max_dim=1200, max_parcels=30)
-            # Map B polygons into A space.
+            # Map B polygons into A space (warp-aware when aligned).
             parcels_b = [
                 {**p,
-                 "polygon": [[round(x * sx, 1), round(y * sy, 1)] for x, y in p["polygon"]],
-                 "bbox": [p["bbox"][0] * sx, p["bbox"][1] * sy,
-                          p["bbox"][2] * sx, p["bbox"][3] * sy]}
+                 "polygon": [[round(qx, 1), round(qy, 1)]
+                             for qx, qy in (_b_to_a_pt(x, y) for x, y in p["polygon"])],
+                 "bbox": _b_to_a_box(p["bbox"])}
                 for p in res_b["parcels"]
             ]
         except Exception as exc:
@@ -348,12 +396,8 @@ def detect_changes(
     # --- Building / road matching across frames (IoU, greedy).
     bld_a = [d for d in dets_a if _is_building_label(d.get("class", ""))]
     bld_b = [d for d in dets_b_a if _is_building_label(d.get("class", ""))]
-    try:
-        from services.features import _is_road_label as _road
-    except ImportError:
-        from backend.services.features import _is_road_label as _road
-    road_a = [d for d in dets_a if _road(d.get("class", ""))]
-    road_b = [d for d in dets_b_a if _road(d.get("class", ""))]
+    road_a = [d for d in dets_a if _is_road_label(d.get("class", ""))]
+    road_b = [d for d in dets_b_a if _is_road_label(d.get("class", ""))]
 
     def _match(list_a, list_b):
         used_b = set()
@@ -472,18 +516,23 @@ def detect_changes(
                   area_px=area_a)
 
     # Cap output: NEW/REMOVED/CHANGED first, then UNCHANGED sample.
+    # Counts + summary below describe the FULL result (pre-cap) so they never
+    # underreport; `truncated` flags that the item list was sampled.
     prio = {"NEW": 0, "REMOVED": 1, "CHANGED": 2, "UNCHANGED": 3}
     changes.sort(key=lambda c: (prio[c["status"]], -c["area_px"]))
-    changes = changes[:MAX_CHANGES]
+    total_found = len(changes)
 
     counts = {s: sum(1 for c in changes if c["status"] == s) for s in CHANGE_STATUSES}
-    counts["total"] = len(changes)
+    counts["total"] = total_found
     new_buildings = sum(1 for c in changes if c["status"] == "NEW" and c["kind"] == "building")
     removed_structures = sum(1 for c in changes if c["status"] == "REMOVED" and c["kind"] in ("building", "parcel", "road"))
     new_roads = sum(1 for c in changes if c["status"] == "NEW" and c["kind"] == "road")
     changed_parcel_areas = sum(1 for c in changes if c["status"] == "CHANGED" and c["kind"] == "parcel")
     changed_areas = sum(1 for c in changes if c["status"] == "CHANGED" and c["kind"] == "area")
     construction_zones = sum(1 for c in changes if c["status"] == "CHANGED" and c["kind"] == "construction")
+
+    truncated = total_found > MAX_CHANGES
+    changes = changes[:MAX_CHANGES]
 
     geojson = {
         "type": "FeatureCollection",
@@ -521,12 +570,19 @@ def detect_changes(
             "changed_parcel_areas": changed_parcel_areas,
             "changed_areas": changed_areas,
             "construction_zones": construction_zones,
+            "truncated": truncated,
+            "total_found": total_found,
         },
         "image_a": {"width": aw, "height": ah},
         "image_b": {"width": bw, "height": bh},
         "reference": "image_a",
-        "alignment": {"aligned": aligned, "method": "ECC-affine" if align else "disabled"},
+        "alignment": {
+            "aligned": aligned,
+            "method": "ECC-affine" if (align and aligned) else (
+                "ECC-affine attempted but failed; compared unaligned" if align else "disabled"),
+        },
         "gsd_m_per_px": gsd,
+        "gsd_source": gsd_source,
         "change_colors": CHANGE_COLORS_HEX,
         "geojson": geojson,
         "warnings": warnings,
@@ -565,15 +621,19 @@ def annotate_changes(image_path: str | Path, changes: List[Dict[str, Any]], outp
     font_scale = max(0.5, max(h, w) / 1400.0)
 
     for c in changes or []:
-        if c["status"] == "UNCHANGED":
-            continue  # listed, not drawn — keeps the snapshot readable
-        color = CHANGE_COLORS_BGR.get(c["status"], (255, 255, 255))
-        pts = np.array([[int(round(x)), int(round(y))] for x, y in c["polygon"]], dtype=np.int32)
+        try:
+            if c.get("status") == "UNCHANGED":
+                continue  # listed, not drawn — keeps the snapshot readable
+            color = CHANGE_COLORS_BGR.get(c.get("status"), (255, 255, 255))
+            pts = np.array([[int(round(x)), int(round(y))] for x, y in c["polygon"]], dtype=np.int32)
+            conf = float(c.get("confidence", 0))
+        except Exception:
+            continue  # one malformed change must not abort the whole image
         if len(pts) < 3:
             continue
         cv2.fillPoly(overlay, [pts], color)
         cv2.polylines(img, [pts], True, color, thickness, cv2.LINE_AA)
-        label = f"{c['status']} {c['kind']} {c['confidence']:.2f}"
+        label = f"{c.get('status', '?')} {c.get('kind', '?')} {conf:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
         x0 = int(np.clip(pts[:, 0].min(), 0, max(0, w - tw - 12)))
         y0 = int(max(0, pts[:, 1].min() - th - 12))

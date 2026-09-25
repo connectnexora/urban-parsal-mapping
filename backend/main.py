@@ -55,8 +55,6 @@ try:
     from services.changes import (
         detect_changes,
         annotate_changes,
-        CHANGE_COLORS_HEX,
-        CHANGE_DISCLAIMER,
         CHANGE_STATUSES,
     )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
@@ -83,8 +81,6 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.changes import (
         detect_changes,
         annotate_changes,
-        CHANGE_COLORS_HEX,
-        CHANGE_DISCLAIMER,
         CHANGE_STATUSES,
     )
 
@@ -143,6 +139,11 @@ app = FastAPI(
 )
 
 # Allow the Vite React dev server to call the API from the browser.
+# Extra origins (docker, LAN, production domain) via ALLOWED_ORIGINS env:
+# comma-separated, e.g. ALLOWED_ORIGINS="https://app.example.com,http://192.168.1.10:5173"
+import os as _os
+
+_EXTRA_ORIGINS = [o.strip() for o in _os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -150,6 +151,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        *_EXTRA_ORIGINS,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -188,7 +190,7 @@ def _validate_extension(filename: str) -> str:
     return suffix
 
 
-def _read_dimensions(path: Path) -> tuple:
+def _read_dimensions(path: Path) -> tuple[int, int]:
     """Return (width, height) in pixels. Raises HTTPException if unreadable."""
     try:
         with Image.open(path) as img:
@@ -221,7 +223,8 @@ async def _store_upload(file: UploadFile) -> dict:
     safe_name = f"{stamp}_{uuid.uuid4().hex[:6]}_{_sanitize_filename(original)}"
     dest = UPLOAD_DIR / safe_name
     try:
-        dest.write_bytes(content)
+        # Off the event loop: drone frames can be tens of MB.
+        await run_in_threadpool(dest.write_bytes, content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not save upload: {exc}") from exc
 
@@ -278,10 +281,10 @@ def health():
         "service": "urban-parcel-mapping-backend",
         "version": APP_VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model_loaded": status["loaded"],
-        "model_name": status["model_name"],
-        "model_type": status["model_type"],
-        "supports_buildings": status["supports_buildings"],
+        "model_loaded": status.get("loaded", False),
+        "model_name": status.get("model_name"),
+        "model_type": status.get("model_type", "none"),
+        "supports_buildings": status.get("supports_buildings", False),
         "parcel_ready": pstatus.get("ready", False),
         "parcel_method_hint": "yolo-seg" if pstatus.get("yolo_seg_available") else "classical-watershed-contours",
     }
@@ -313,7 +316,7 @@ def info():
             "ai": "Ultralytics YOLO (+YOLO-seg when available) + classical colour/watershed segmentation",
         },
         "feature_types": list(FEATURE_TYPES),
-        "ai_status": "ready" if status["loaded"] else "model_missing",
+        "ai_status": "ready" if status.get("loaded") else "model_missing",
         "model": status,
         "parcels": pstatus,
         "disclaimer": APPROX_DISCLAIMER,
@@ -356,7 +359,7 @@ async def upload_image(file: UploadFile = File(...)):
         status_code=201,
         content={
             **_public_upload_meta(stored),
-            "message": "File received. Run POST /detect/buildings, /detect/parcels or /detect/features for AI analysis.",
+            "message": "File received. Run POST /detect/buildings, /detect/parcels, /detect/features or /detect/changes (two images) for AI analysis.",
             "detections": None,  # explicitly null — no fake results
         },
     )
@@ -394,7 +397,9 @@ async def _detect_buildings_impl(
             detail={"message": "Detection failed.", "help": str(exc)},
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Inference failed: {exc}")
 
@@ -447,6 +452,9 @@ async def detect_buildings(
                           "bbox": [x1, y1, x2, y2], "class_id": 0}],
           "building_count": 3,
           "average_confidence": 0.87,
+          "all_detections": [...],       # every raw YOLO box (real labels)
+          "total_detections": 5,
+          "model": {...}, "warning": ...,  # set when the model has no building class
           "annotated_image": "/outputs/<file>_annotated.jpg",
           ...
         }
@@ -481,7 +489,7 @@ async def _detect_parcels_impl(
             status_code=503,
             detail={
                 "message": "Parcel extraction is unavailable.",
-                "help": pstatus.get("error") or pstatus.get("help"),
+                "help": pstatus.get("error") or pstatus.get("help") or "Parcel service is not ready.",
                 "parcel_status": pstatus,
             },
         )
@@ -497,8 +505,12 @@ async def _detect_parcels_impl(
             1600,  # max_dim preprocessing cap
             max_parcels,
         )
-    except (ValueError, FileNotFoundError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
@@ -517,7 +529,11 @@ async def _detect_parcels_impl(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Parcel annotation failed: {exc}")
     try:
-        geojson_path.write_text(json.dumps(result["geojson"], indent=2), encoding="utf-8")
+        await run_in_threadpool(
+            geojson_path.write_text,
+            json.dumps(result["geojson"], indent=2),
+            "utf-8",
+        )
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
 
@@ -571,12 +587,13 @@ async def detect_parcels(
 ):
     """Extract approximate parcel polygons from a drone image.
 
-    Returns parcels as [{parcel_id, area_m2, area_ha, perimeter_m,
-    confidence, polygon}] plus a `summary` (totals, average, largest
-    parcel) and `area_source` ('georeferenced' when the file carries usable
-    spatial tags, else 'estimated' with the assumed GSD) — NOT legal
-    cadastre — plus an annotated image and GeoJSON, both saved under
-    outputs/.
+    Returns parcels as [{parcel_id, area, area_m2, area_ha, perimeter,
+    perimeter_m, confidence, polygon, area_px, perimeter_px, bbox,
+    num_vertices, method}] plus `summary` (totals, averages, largest parcel),
+    top-level total/average fields, `area_source` ('georeferenced' when the
+    file carries usable spatial tags, else 'estimated' with the assumed GSD)
+    — NOT legal cadastre — plus an annotated image and GeoJSON, both saved
+    under outputs/.
     """
     return await _detect_parcels_impl(file, gsd, epsilon, conf, max_parcels)
 
@@ -599,7 +616,19 @@ async def _detect_features_impl(
     confidence: float,
     iou: float,
 ) -> dict:
-    """Full feature-extraction pipeline (never invents detections)."""
+    """Full feature-extraction pipeline (never invents detections).
+
+    Args:
+        file: uploaded drone/aerial image.
+        confidence: YOLO confidence threshold.
+        iou: YOLO NMS IoU threshold.
+
+    Returns:
+        dict with `features` (per-category lists), `counts` (incl. total),
+        `reasons` (why empty categories are empty), `feature_colors`,
+        `detections`/`building_count`/`average_confidence` (building summary),
+        `annotated_image`, `segmentation_stats`, `warnings`, `timestamp`.
+    """
     stored = await _store_upload(file)
     saved_path = Path(stored["path"])
     saved_name = stored["filename"]
@@ -723,8 +752,12 @@ async def _detect_changes_impl(
         result = await run_in_threadpool(
             detect_changes, path_a, path_b, confidence, iou, align, gsd
         )
-    except (ValueError, FileNotFoundError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
@@ -733,8 +766,8 @@ async def _detect_changes_impl(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Change detection failed: {exc}")
 
-    stem_a = Path(stored_a["filename"]).stem
-    stem_b = Path(stored_b["filename"]).stem
+    stem_a = Path(stored_a["filename"]).stem[:100]
+    stem_b = Path(stored_b["filename"]).stem[:100]
     annotated_name = f"{stem_a}_vs_{stem_b}_changes.jpg"
     geojson_name = f"{stem_a}_vs_{stem_b}_changes.geojson"
     annotated_path = OUTPUTS_DIR / annotated_name
@@ -744,7 +777,11 @@ async def _detect_changes_impl(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Change annotation failed: {exc}")
     try:
-        geojson_path.write_text(json.dumps(result["geojson"], indent=2), encoding="utf-8")
+        await run_in_threadpool(
+            geojson_path.write_text,
+            json.dumps(result["geojson"], indent=2),
+            "utf-8",
+        )
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
 
@@ -756,6 +793,7 @@ async def _detect_changes_impl(
         "reference": result["reference"],
         "alignment": result["alignment"],
         "gsd_m_per_px": result["gsd_m_per_px"],
+        "gsd_source": result.get("gsd_source", "assumed GSD"),
         "changes": result["changes"],
         "counts": result["counts"],
         "summary": result["summary"],

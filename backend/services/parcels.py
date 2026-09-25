@@ -25,14 +25,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BASE_DIR.parent
 MODELS_DIR = PROJECT_ROOT / "models"
-OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 
 APPROX_DISCLAIMER = (
     "AI-estimated / approximate parcel boundaries for visualisation and "
@@ -68,12 +66,17 @@ def _scan_seg_weights() -> Dict[str, List[str]]:
         suf = p.suffix.lower()
         if suf not in {".pt", ".pth", ".onnx", ".bin"}:
             continue
-        if "seg" in name and suf in {".pt", ".onnx"}:
-            found["yolo_seg"].append(p.name)
-        elif "unet" in name:
+        # Whole-token match on the filename stem: substring search would
+        # misclassify e.g. "sample_model.pt" or "ensemble.pt" as SAM weights.
+        import re
+
+        tokens = set(re.split(r"[.\-_ ]+", Path(name).stem))
+        if "unet" in tokens:
             found["unet"].append(p.name)
-        elif "sam" in name:
+        elif tokens & {"sam", "sam2", "segment", "anything"}:
             found["sam"].append(p.name)
+        elif "seg" in tokens and suf in {".pt", ".onnx"}:
+            found["yolo_seg"].append(p.name)
         elif suf in {".pt", ".onnx"}:
             found["other"].append(p.name)
     return found
@@ -92,6 +95,8 @@ def init_parcel_service() -> Dict[str, Any]:
         except Exception as exc:
             cv_ok = False
             _init_error = f"Classical CV deps missing ({exc}). pip install -r backend/requirements.txt."
+        else:
+            _init_error = None
         _seg_status = {
             "ready": cv_ok,
             "classical_fallback_available": cv_ok,
@@ -188,7 +193,9 @@ def detect_georeference(image_path: Path) -> Dict[str, Any]:
                     # Only usable directly when CRS units are meters.
                     crs = src.crs
                     units = (getattr(crs, "linear_units", "") or "").lower() if crs else ""
-                    if crs and crs.is_projected and ("m" in units or units in ("metre", "meter", "meters")):
+                    # Exact match only: substring search would treat e.g.
+                    # "kilometre" as metres (1000x area error).
+                    if crs and crs.is_projected and units in ("m", "metre", "meter", "meters", "metres"):
                         gx, gy = abs(float(tr.a)), abs(float(tr.e))
                         if gx > 0 and gy > 0:
                             info.update(
@@ -205,12 +212,9 @@ def detect_georeference(image_path: Path) -> Dict[str, Any]:
                     info["detail"] = (
                         f"Raster has CRS '{crs}' whose units are not meters "
                         "(e.g. degrees) — metric GSD cannot be derived without "
-                        "reprojection; falling back to estimated GSD."
+                        "reprojection; trying TIFF tags before falling back to estimated GSD."
                     )
                     info["source"] = "rasterio-unusable-crs"
-                    return info
-        except ImportError:
-            pass
         except Exception as exc:
             info["detail"] = f"rasterio read failed ({exc}); trying TIFF tags."
     except ImportError:
@@ -233,7 +237,21 @@ def detect_georeference(image_path: Path) -> Dict[str, Any]:
                     f"ModelPixelScaleTag present but implausible ({gx} x {gy}); ignored."
                 )
                 return info
-            # CRS hint from GeoKeys / ASCII params.
+            # CRS decision per the GeoTIFF spec via GeoKeyDirectoryTag (34735):
+            # keys are flat (key_id, location, count, value) groups.
+            # 3072 = ProjectedCSTypeGeoKey, 2048 = GeographicTypeGeoKey
+            # (32767 = user-defined). Magnitude heuristics alone cannot tell
+            # degrees from metres, so unknown CRS stays "assumed metres".
+            geo_keys: Dict[int, int] = {}
+            try:
+                raw_keys = tags.get(_TAG_GEO_KEYS) or ()
+                vals = [int(v) for v in raw_keys]
+                for i in range(4, len(vals) - 3, 4):
+                    geo_keys[vals[i]] = vals[i + 3]
+            except Exception:
+                geo_keys = {}
+            pcs = geo_keys.get(3072, 32767)
+            gcs = geo_keys.get(2048, 32767)
             crs_hint = None
             try:
                 ascii_params = tags.get(_TAG_GEO_ASCII)
@@ -241,27 +259,42 @@ def detect_georeference(image_path: Path) -> Dict[str, Any]:
                     crs_hint = str(ascii_params)[:120]
             except Exception:
                 pass
-            # Degree-based GCS check: geographic CRS stores degrees, not meters.
-            # Heuristic: sub-degree scales (< ~1e-3) with no PCS hint are degrees.
-            looks_like_degrees = gx < 1e-3 and "PCS" not in (crs_hint or "").upper()
-            if looks_like_degrees:
+            if pcs == 32767 and gcs != 32767:
+                # Geographic CRS: scales are degrees, not metres.
                 info.update(
                     detail=(
-                        f"GeoTIFF tags present but in degrees ({gx:.8f} deg/px?) — "
+                        f"GeoTIFF tags use a geographic CRS (degrees, scale {gx:.8f} deg/px) — "
                         "metric GSD needs a projected CRS; falling back to estimated GSD."
                     ),
                     crs_hint=crs_hint or "geographic (degrees)",
                     source="tiff-tags-degrees",
                 )
                 return info
-            rotated = _TAG_TRANSFORM in tags
+            # Rotation means pixel geometry is skewed, not axis-aligned:
+            # inspect the ModelTransformationTag matrix, not just its presence.
+            rotated = False
+            try:
+                matrix = [float(v) for v in (tags.get(_TAG_TRANSFORM) or [])]
+                if len(matrix) >= 16:
+                    rotated = any(abs(matrix[i]) > 1e-9 for i in (1, 2, 4, 6))
+            except Exception:
+                rotated = False
+            units_known = pcs != 32767
             info.update(
                 georeferenced=True,
                 gsd_x=gx,
                 gsd_y=gy,
                 gsd=(gx + gy) / 2.0,
-                crs_hint=crs_hint or "projected (meters, via ModelPixelScaleTag)",
-                detail=f"GeoTIFF ModelPixelScaleTag: {gx:.4f} x {gy:.4f} m/px.",
+                crs_hint=crs_hint or (
+                    "projected CRS (meters, via ModelPixelScaleTag)"
+                    if units_known else
+                    "unknown CRS — scale assumed to be meters"
+                ),
+                detail=(
+                    f"GeoTIFF ModelPixelScaleTag: {gx:.4f} x {gy:.4f} "
+                    + ("m/px (projected CRS)." if units_known else
+                       "units/px (CRS unknown — assumed meters; verify against your sensor).")
+                ),
                 rotated=rotated,
                 source="tiff-tags",
             )
@@ -309,17 +342,24 @@ def _try_yolo_seg_masks(small_bgr, conf: float = 0.25) -> Tuple[List[Any], str |
     used: str | None = None
     for name in weights:
         try:
+            import cv2
+
             model = YOLO(str(MODELS_DIR / name))
-            res = model.predict(source=small_bgr, conf=conf, verbose=False)
+            # Ultralytics expects RGB; our working copy is OpenCV BGR.
+            rgb = cv2.cvtColor(small_bgr, cv2.COLOR_BGR2RGB)
+            res = model.predict(source=rgb, conf=conf, verbose=False)
             if res and getattr(res[0], "masks", None) is not None:
-                data = res[0].masks.data  # torch tensor (n, h, w)
+                data = res[0].masks.data  # torch tensor (n, h, w) or ndarray
                 try:
                     import numpy as np
 
-                    arr = data.detach().cpu().numpy()
+                    if hasattr(data, "detach"):
+                        arr = data.detach().cpu().numpy()
+                    else:
+                        arr = np.asarray(data)
                 except Exception:
-                    arr = data.numpy() if hasattr(data, "numpy") else None
-                if arr is not None:
+                    arr = None
+                if arr is not None and getattr(arr, "ndim", 0) == 3:
                     last = [arr[i] for i in range(arr.shape[0])]
                     used = name
                     break
@@ -348,7 +388,7 @@ def _classical_segments(pre, min_area_px: float) -> Tuple[List[Any], Any]:
     dist = cv2.distanceTransform(closed, cv2.DIST_L2, 5)
     if float(dist.max()) <= 0:
         return [], None
-    _, sure_fg = cv2.threshold(dist, 0.35 * dist.max(), 255, 0)
+    _, sure_fg = cv2.threshold(dist, 0.35 * dist.max(), 255, cv2.THRESH_BINARY)
     sure_fg = sure_fg.astype("uint8")
     sure_bg = cv2.dilate(closed, kernel, iterations=3)
     unknown = cv2.subtract(sure_bg, sure_fg)
@@ -388,8 +428,14 @@ def _masks_to_parcels(
     parcels: List[Dict[str, Any]] = []
     inv_scale = 1.0 / scale if scale else 1.0
     for mask in masks:
-        m = (np.asarray(mask) > 0.5).astype("uint8") * 255 if mask.dtype != np.uint8 else mask
-        contours, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        try:
+            arr = np.asarray(mask)
+        except Exception:
+            continue
+        m = (arr > 0.5).astype("uint8") * 255 if arr.dtype != np.dtype("uint8") else arr
+        found = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # OpenCV 4 returns (contours, hierarchy); OpenCV 3 returns (image, contours, hierarchy).
+        contours = found[0] if len(found) == 2 else found[1]
         if not contours:
             continue
         # Largest contour per watershed region / seg mask.
@@ -655,16 +701,22 @@ def annotate_parcels(
 
     for i, p in enumerate(parcels or []):
         color = palette[i % len(palette)]
-        pts = np.array([[int(round(x)), int(round(y))] for x, y in p["polygon"]], dtype=np.int32)
+        try:
+            pts = np.array([[int(round(x)), int(round(y))] for x, y in p["polygon"]], dtype=np.int32)
+            pid = str(p.get("parcel_id", f"P-{i + 1:03d}"))
+            area_txt = p.get("area_m2", p.get("area", "?"))
+        except Exception:
+            continue  # one malformed parcel must not abort the whole image
         if len(pts) < 3:
             continue
         cv2.fillPoly(overlay, [pts], color)
         cv2.polylines(img, [pts], True, color, thickness, cv2.LINE_AA)
         # Label near first vertex: id + estimated area.
         x0, y0 = int(pts[0][0]), int(pts[0][1])
-        label = f"{p['parcel_id']} ~{p['area']}m2"
+        label = f"{pid} ~{area_txt}m2"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-        lx, ly = min(max(x0, 0), w - tw - 12), min(max(y0 - th - 12, 0), h - th - 12)
+        lx = max(0, min(max(x0, 0), max(0, w - tw - 12)))
+        ly = max(0, min(max(y0 - th - 12, 0), max(0, h - th - 12)))
         cv2.rectangle(img, (lx, ly), (lx + tw + 8, ly + th + 10), (6, 18, 31), -1)
         cv2.putText(img, label, (lx + 4, ly + th + 4),
                     cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness, cv2.LINE_AA)

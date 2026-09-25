@@ -351,12 +351,14 @@ def annotate_image(
     image_path: str | Path,
     detections: List[Dict[str, Any]],
     output_path: str | Path,
+    title: str = "Buildings",
 ) -> Path:
     """Draw bounding boxes + labels onto a copy of the image.
 
     Only the *given* detections are drawn (callers pass building-only or all
-    detections explicitly). Returns the output path. Raises RuntimeError when
-    the image cannot be read/written.
+    detections explicitly). `title` labels the header banner — pass e.g.
+    "Detections" when drawing non-building boxes. Returns the output path.
+    Raises RuntimeError when the image cannot be read/written.
     """
     try:
         import cv2  # type: ignore
@@ -381,13 +383,14 @@ def annotate_image(
                 for det in detections or []:
                     try:
                         _x1, _y1, _x2, _y2 = (int(v) for v in det["bbox"])
+                        _conf = float(det.get("confidence", 0))
                     except Exception:
                         continue
                     _d.rectangle([_x1, _y1, _x2, _y2], outline=(46, 204, 113), width=2)
                     _d.text((_x1 + 3, max(0, _y1 - 14)),
-                            f"{det.get('class', 'obj')} {float(det.get('confidence', 0)):.2f}",
+                            f"{det.get('class', 'obj')} {_conf:.2f}",
                             fill=(46, 204, 113), font=_font)
-                _d.text((10, 10), f"Buildings: {len(detections or [])}",
+                _d.text((10, 10), f"{title}: {len(detections or [])}",
                         fill=(56, 189, 248), font=_font)
                 _img.save(output_path, "JPEG", quality=90)
         except Exception as exc:
@@ -422,13 +425,14 @@ def annotate_image(
     for det in detections or []:
         try:
             x1, y1, x2, y2 = (int(v) for v in det["bbox"])
+            conf = float(det.get("confidence", 0))
         except Exception:
             continue
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w - 1, x2), min(h - 1, y2)
         if x2 <= x1 or y2 <= y1:
             continue
-        label = f"{det.get('class', 'obj')} {float(det.get('confidence', 0)):.2f}"
+        label = f"{det.get('class', 'obj')} {conf:.2f}"
         cv2.rectangle(img, (x1, y1), (x2, y2), (46, 204, 113), thickness)
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
         y0 = max(0, y1 - th - 10)
@@ -440,7 +444,7 @@ def annotate_image(
         )
 
     # Header banner with the count (drawn even when zero — honest output).
-    banner = f"Buildings: {len(detections or [])}"
+    banner = f"{title}: {len(detections or [])}"
     (tw, th), _ = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, font_scale + 0.2, thickness)
     cv2.rectangle(img, (8, 8), (8 + tw + 16, 8 + th + 16), (11, 18, 32), -1)
     cv2.putText(

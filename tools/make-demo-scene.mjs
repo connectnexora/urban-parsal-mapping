@@ -38,11 +38,12 @@ function rnd() {
 function crc32(buf) {
   let tab = crc32.t;
   if (!tab) {
-    tab = crc32.t = new Int32Array(256);
+    // Unsigned: CRC bit patterns exceed INT32_MAX and must not go negative.
+    tab = crc32.t = new Uint32Array(256);
     for (let n = 0; n < 256; n++) {
       let c = n;
       for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-      tab[n] = c;
+      tab[n] = c >>> 0;
     }
   }
   let c = 0xFFFFFFFF;
@@ -69,7 +70,7 @@ function writePNG(path, px, w, h) {
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; ihdr[9] = 2;
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0; // deflate, no filter, no interlace
   const png = Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk('IHDR', ihdr),
@@ -202,18 +203,33 @@ for (const b of BUILDINGS) {
 for (const c of CARS) { fillRect(px, c.x0, c.y0, c.x1, c.y1, [200, 60, 60]); rectOutline(px, c.x0, c.y0, c.x1, c.y1, [120, 30, 30], 1); }
 
 // --- annotated copy --------------------------------------------------------------
+// Center-line dashes follow each road's long axis: horizontal roads get a
+// horizontal spine, the vertical road a vertical one.
 const ann = Uint8Array.from(px);
 for (const r of ROADS) {
-  const cx0 = r.x0, cy0 = (r.y0 + r.y1) / 2;
-  for (let x = Math.max(0, cx0); x < Math.min(W, r.x1); x += 4) set(ann, x, Math.round(cy0), OVER_ROAD);
-  for (let x = Math.max(0, cx0); x < Math.min(W, r.x1); x += 4) set(ann, x, Math.round(cy0) + 1, OVER_ROAD);
+  const rw = r.x1 - r.x0, rh = r.y1 - r.y0;
+  if (rw >= rh) {
+    const cy = Math.round((r.y0 + r.y1) / 2);
+    for (let x = Math.max(0, r.x0); x < Math.min(W, r.x1); x += 4) {
+      set(ann, x, cy, OVER_ROAD);
+      set(ann, x, cy + 1, OVER_ROAD);
+    }
+  } else {
+    const cx = Math.round((r.x0 + r.x1) / 2);
+    for (let y = Math.max(0, r.y0); y < Math.min(H, r.y1); y += 4) {
+      set(ann, cx, y, OVER_ROAD);
+      set(ann, cx + 1, y, OVER_ROAD);
+    }
+  }
 }
 for (const p of PARCELS) rectOutline(ann, p.x0, p.y0, p.x1, p.y1, OVER_PARCEL, 3);
 for (const b of BUILDINGS) rectOutline(ann, b.x0, b.y0, b.x1, b.y1, OVER_BUILD, 2);
 
 // --- results (same geometry) -------------------------------------------------------
+const M2_PER_HA = 10000;
 const m2 = (w, h) => Math.round(w * h * GSD * GSD * 100) / 100;
 const pm = (w, h) => Math.round(2 * (w + h) * GSD * 100) / 100;
+const toHa = (m2v) => Math.round((m2v / M2_PER_HA) * 10000) / 10000;
 
 const parcels = PARCELS.map((p) => {
   const w = p.x1 - p.x0, h = p.y1 - p.y0;
@@ -221,7 +237,7 @@ const parcels = PARCELS.map((p) => {
     parcel_id: p.id,
     area: m2(w, h),
     area_m2: m2(w, h),
-    area_ha: Math.round(m2(w, h) / 10000 * 10000) / 10000,
+    area_ha: toHa(m2(w, h)),
     perimeter: pm(w, h),
     perimeter_m: pm(w, h),
     confidence: p.conf,
@@ -250,7 +266,7 @@ const features = {
   buildings: detections.map((d) => ({ ...d, polygon: [[d.bbox[0], d.bbox[1]], [d.bbox[2], d.bbox[1]], [d.bbox[2], d.bbox[3]], [d.bbox[0], d.bbox[3]], [d.bbox[0], d.bbox[1]]], area_px: (d.bbox[2] - d.bbox[0]) * (d.bbox[3] - d.bbox[1]), method: 'demo-precomputed' })),
   roads: ROADS.map((r) => ({ class: 'road', confidence: r.conf, bbox: [r.x0, r.y0, r.x1, r.y1], polygon: [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1], [r.x0, r.y0]], area_px: (r.x1 - r.x0) * (r.y1 - r.y0), method: 'demo-precomputed' })),
   vegetation: VEG_PATCHES.map((v) => ({ class: 'vegetation', confidence: v.conf, bbox: [v.x0, v.y0, v.x1, v.y1], polygon: [[v.x0, v.y0], [v.x1, v.y0], [v.x1, v.y1], [v.x0, v.y1], [v.x0, v.y0]], area_px: (v.x1 - v.x0) * (v.y1 - v.y0), method: 'demo-precomputed' })),
-  water: [{ class: 'water', confidence: WATER_POND.conf, bbox: [WATER_POND.cx - WATER_POND.rx, WATER_POND.cy - WATER_POND.ry, WATER_POND.cx + WATER_POND.rx, WATER_POND.cy + WATER_POND.ry], polygon: [[WATER_POND.cx - WATER_POND.rx, WATER_POND.cy], [WATER_POND.cx, WATER_POND.cy - WATER_POND.ry], [WATER_POND.cx + WATER_POND.rx, WATER_POND.cy], [WATER_POND.cx, WATER_POND.cy + WATER_POND.ry], [WATER_POND.cx - WATER_POND.rx, WATER_POND.cy]], area_px: 8800, method: 'demo-precomputed' }],
+  water: [{ class: 'water', confidence: WATER_POND.conf, bbox: [WATER_POND.cx - WATER_POND.rx, WATER_POND.cy - WATER_POND.ry, WATER_POND.cx + WATER_POND.rx, WATER_POND.cy + WATER_POND.ry], polygon: [[WATER_POND.cx - WATER_POND.rx, WATER_POND.cy], [WATER_POND.cx, WATER_POND.cy - WATER_POND.ry], [WATER_POND.cx + WATER_POND.rx, WATER_POND.cy], [WATER_POND.cx, WATER_POND.cy + WATER_POND.ry], [WATER_POND.cx - WATER_POND.rx, WATER_POND.cy]], area_px: Math.round(Math.PI * WATER_POND.rx * WATER_POND.ry), method: 'demo-precomputed' }],
   other: CARS.map((c) => ({ class: 'car', confidence: c.conf, bbox: [c.x0, c.y0, c.x1, c.y1], polygon: [[c.x0, c.y0], [c.x1, c.y0], [c.x1, c.y1], [c.x0, c.y1], [c.x0, c.y0]], area_px: (c.x1 - c.x0) * (c.y1 - c.y0), method: 'demo-precomputed' })),
 };
 const counts = Object.fromEntries(Object.entries(features).map(([k, v]) => [k, v.length]));
@@ -286,13 +302,13 @@ export const DEMO_PARCELS = ${JSON.stringify({
   parcels, parcel_count: parcels.length,
   total_area_estimated_m2: totalM2, total_area_estimated_ha: Math.round(totalM2 / 10000 * 10000) / 10000,
   average_area_m2: Math.round(totalM2 / parcels.length * 100) / 100,
-  average_area_ha: Math.round(totalM2 / parcels.length / 10000 * 10000) / 10000,
+  average_area_ha: toHa(totalM2 / parcels.length),
   largest_parcel: { parcel_id: largest.parcel_id, area_m2: largest.area_m2, area_ha: largest.area_ha, perimeter_m: largest.perimeter_m },
   summary: {
     total_parcels: parcels.length, total_area_m2: totalM2,
-    total_area_ha: Math.round(totalM2 / 10000 * 10000) / 10000,
+    total_area_ha: toHa(totalM2),
     average_area_m2: Math.round(totalM2 / parcels.length * 100) / 100,
-    average_area_ha: Math.round(totalM2 / parcels.length / 10000 * 10000) / 10000,
+    average_area_ha: toHa(totalM2 / parcels.length),
     average_confidence: avgConf,
     largest_parcel: { parcel_id: largest.parcel_id, area_m2: largest.area_m2, area_ha: largest.area_ha, perimeter_m: largest.perimeter_m },
     area_source: 'estimated', area_label: 'Demo scene — estimated image-based area, NOT real-world cadastral area.',

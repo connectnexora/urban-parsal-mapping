@@ -87,12 +87,9 @@ export function imageFrame(dims) {
 export function pxToLatLng(x, y, dims, bounds) {
   const [[s, w] = [], [n, e] = []] = bounds || [];
   if (n == null) return [CENTER[0], CENTER[1]];
-  return [n - (y / dims.h) * (n - s), w + (x / dims.w) * (e - w)];
-}
-
-/** Ring of [x, y] px -> ring of [lat, lng]. */
-export function ringToLatLngs(ring, dims, bounds) {
-  return (ring || []).map(([x, y]) => pxToLatLng(x, y, dims, bounds));
+  const dh = dims?.h || 1;
+  const dw = dims?.w || 1;
+  return [n - (y / dh) * (n - s), w + (x / dw) * (e - w)];
 }
 
 /** Ray-casting point-in-ring test in PIXEL space. */
@@ -108,8 +105,9 @@ export function pointInRing(px, py, ring) {
   return inside;
 }
 
-/** Bounding-box centre in pixels. */
+/** Bounding-box centre in pixels. Returns null for a missing bbox. */
 export function bboxCenter(bbox) {
+  if (!bbox) return null;
   const [x1, y1, x2, y2] = bbox;
   return [(x1 + x2) / 2, (y1 + y2) / 2];
 }
@@ -135,17 +133,20 @@ export function buildingCoverage(parcels, buildings) {
     const ids = [];
     for (const b of buildings || []) {
       if (!b?.bbox) continue;
-      const [cx, cy] = bboxCenter(b.bbox);
+      const center = bboxCenter(b.bbox);
+      if (!center) continue;
+      const [cx, cy] = center;
       if (ring.length >= 3 && pointInRing(cx, cy, ring)) {
         count += 1;
         area += bboxArea(b.bbox);
         ids.push(b.class ? `${b.class}@${Math.round(cx)},${Math.round(cy)}` : `box@${Math.round(cx)},${Math.round(cy)}`);
       }
     }
-    const denom = p.area_px || 1;
+    // No pixel area available -> coverage unknown (0), never a fabricated 100%.
+    const denom = p.area_px;
     out[p.parcel_id] = {
       count,
-      coveragePct: Math.min(100, Math.round((area / denom) * 1000) / 10),
+      coveragePct: !denom ? 0 : Math.min(100, Math.round((area / denom) * 1000) / 10),
       buildingIds: ids,
     };
   }
@@ -188,7 +189,7 @@ export function detectionsToGeoJSON(detections, kind = 'building') {
   return {
     type: 'FeatureCollection',
     properties: { kind, coordinate_system: 'image_pixels' },
-    features: (detections || []).map((d, i) => {
+    features: (detections || []).filter((d) => d?.bbox).map((d, i) => {
       const [x1, y1, x2, y2] = d.bbox;
       return {
         type: 'Feature',
@@ -246,9 +247,11 @@ export function featureItemsToGeoJSON(items, kind) {
       const poly = d.polygon && d.polygon.length >= 3
         ? d.polygon
         : (() => {
+          if (!d.bbox) return null;
           const [x1, y1, x2, y2] = d.bbox;
           return [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]];
         })();
+      if (!poly) return null;
       return {
         type: 'Feature',
         properties: {
@@ -261,6 +264,6 @@ export function featureItemsToGeoJSON(items, kind) {
         },
         geometry: { type: 'Polygon', coordinates: [poly] },
       };
-    }),
+    }).filter(Boolean),
   };
 }

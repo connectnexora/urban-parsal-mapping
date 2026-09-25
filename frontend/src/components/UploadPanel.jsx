@@ -13,12 +13,12 @@ import {
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
 // Browsers can render these directly; TIFF gets a file card instead.
 const PREVIEWABLE_EXT = ['.jpg', '.jpeg', '.png'];
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/tiff'];
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/tiff', 'image/x-tiff', 'image/tif'];
 // Must match backend MAX_UPLOAD_BYTES.
 const MAX_BYTES = 100 * 1024 * 1024;
 
 const extOf = (name) => {
-  const i = name.lastIndexOf('.');
+  const i = (name || '').lastIndexOf('.');
   return i >= 0 ? name.slice(i).toLowerCase() : '';
 };
 
@@ -99,9 +99,6 @@ export default function UploadPanel({
     }
   };
 
-  // Alias kept for backwards-compat call sites.
-  const refreshModelStatus = refreshStatuses;
-
   useEffect(() => {
     refreshStatuses();
   }, []);
@@ -119,7 +116,6 @@ export default function UploadPanel({
   };
 
   const working = busy || isDetecting || isExtracting;
-  const aiBusy = working;
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -132,12 +128,18 @@ export default function UploadPanel({
     setDetectionError?.(null);
     setParcelError?.(null);
     setFeaturesError?.(null);
+    // Old AI results belong to the previous frame — clear them so stale
+    // parcels/buildings never overlay the newly selected image.
+    setDetection?.(null);
+    setFeatures?.(null);
+    setParcelResult?.(null);
 
     const err = validateFile(f);
     if (err) {
       setFile(null);
       setLocalDims(null);
       setFileError(err);
+      setOriginalPreview?.(null);
       return;
     }
     setFileError('');
@@ -155,6 +157,7 @@ export default function UploadPanel({
         clearPreview();
         setFile(null);
         setLocalDims(null);
+        setOriginalPreview?.(null);
         setFileError('This file looks corrupted — the browser cannot decode it as an image.');
       };
       img.src = url;
@@ -178,6 +181,7 @@ export default function UploadPanel({
       await refreshStatuses();
     } catch (err) {
       setBackendStatus('down');
+      setHealthData(null);
       setMessage(`Cannot reach backend at ${API_BASE}. Is uvicorn running?`);
     } finally {
       setBusy(false);
@@ -269,16 +273,20 @@ export default function UploadPanel({
           `Model unavailable (HTTP 503). ` +
           (help || err.message) +
           ` See models/README.md — place a building-trained YOLO weight in models/ and restart the backend.`;
-        if (isFeatures) setFeaturesError?.(msg);
-        else {
+        if (isFeatures) {
+          setFeatures?.(null);
+          setFeaturesError?.(msg);
+        } else {
           setDetection?.(null);
           setDetectionError?.(msg);
         }
         setMessage(msg);
       } else {
         const msg = `AI run failed: ${help || err.message}`;
-        if (isFeatures) setFeaturesError?.(msg);
-        else {
+        if (isFeatures) {
+          setFeatures?.(null);
+          setFeaturesError?.(msg);
+        } else {
           setDetection?.(null);
           setDetectionError?.(msg);
         }
@@ -340,9 +348,6 @@ export default function UploadPanel({
     : parcelStatus.ready
       ? `Parcels: ready (${parcelStatus.yolo_seg_available ? 'YOLO-seg masks' : 'classical watershed/contours'})`
       : `Parcels: NOT READY — ${parcelStatus.error || 'install backend requirements'}`;
-
-  void backendStatus;
-  void refreshModelStatus;
 
   return (
     <section className="card">
@@ -414,22 +419,22 @@ export default function UploadPanel({
 
       <div style={{ height: 10 }} />
 
-      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy}>
+      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy || isDetecting || isExtracting}>
         {busy ? 'Uploading…' : 'Upload to Backend'}
       </button>
-      <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || aiBusy}>
+      <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || working}>
         {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
       </button>
-      <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || aiBusy}>
+      <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || working}>
         {isExtracting && extractKind === 'parcels' ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
       </button>
       <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || working}>
         {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
       </button>
-      <button className="btn ghost" onClick={testConnection} disabled={aiBusy}>
+      <button className="btn ghost" onClick={testConnection} disabled={working}>
         Test Backend Connection
       </button>
-      <button className="btn ghost" onClick={onEnterDemo} disabled={aiBusy || demoMode !== 'off'} title="Load the prepared demo dataset (precomputed results)">
+      <button className="btn ghost" onClick={onEnterDemo} disabled={working || demoMode !== 'off'} title="Load the prepared demo dataset (precomputed results)">
         {demoMode === 'loading' ? 'Loading demo…' : demoMode === 'active' ? 'Demo active ✓' : 'Try Demo Dataset'}
       </button>
 

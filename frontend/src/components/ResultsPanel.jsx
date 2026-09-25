@@ -7,14 +7,14 @@ export default function ResultsPanel({ backendStatus, healthData, detection, fea
   const hasFeatures = features != null;
   const hasParcels = parcelResult != null;
   const buildings = hasResult ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
-  const avgConf = hasResult ? (detection.average_confidence ?? 0).toFixed(2) : '—';
+  const avgConf = hasResult ? Number(detection.average_confidence ?? 0).toFixed(2) : '—';
   const total = hasResult ? (detection.total_detections ?? detection.all_detections?.length ?? '—') : '—';
   const modelName = hasResult ? detection.model?.name || detection.model_name || '—' : '—';
   const counts = features?.counts || {};
   const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
   const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
-  const totalHa = hasParcels
-    ? (parcelResult.total_area_estimated_ha ?? (Number(parcelResult.total_area_estimated_m2) || 0) / 10000)
+  const totalHa = hasParcels && parcelResult.total_area_estimated_m2 != null
+    ? (parcelResult.total_area_estimated_ha ?? Number(parcelResult.total_area_estimated_m2) / 10000)
     : null;
   const areaSrc = parcelResult?.area_source;
 

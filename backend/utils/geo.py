@@ -81,12 +81,13 @@ def parcels_to_geojson(
                 "type": "Feature",
                 "properties": {
                     "parcel_id": p.get("parcel_id"),
-                    "area_m2_estimated": p.get("area"),
-                    "perimeter_m_estimated": p.get("perimeter"),
+                    "area_m2_estimated": p.get("area_m2", p.get("area")),
+                    "area_ha_estimated": p.get("area_ha"),
+                    "perimeter_m_estimated": p.get("perimeter_m", p.get("perimeter")),
                     "confidence_approx": p.get("confidence"),
                     "disclaimer": "AI-estimated/approximate — not a legal cadastral boundary.",
                 },
-                "geometry": {"type": "Polygon", "coordinates": [p.get("polygon", [])]},
+                "geometry": {"type": "Polygon", "coordinates": [p.get("polygon") or []]},
             }
             for p in parcels
         ],

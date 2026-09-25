@@ -1303,7 +1303,7 @@ export const DEMO_FEATURES = {
             470
           ]
         ],
-        "area_px": 8800,
+        "area_px": 8796,
         "method": "demo-precomputed"
       }
     ],

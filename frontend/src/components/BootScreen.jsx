@@ -31,18 +31,22 @@ export default function BootScreen({ onDone }) {
   };
 
   useEffect(() => {
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
     const per = reduced ? 350 : STAGE_MS;
-    const t = setInterval(() => {
-      setStage((s) => {
-        if (s + 1 >= STAGES.length) {
-          clearInterval(t);
-          setTimeout(finish, reduced ? 150 : 650);
-          return s;
-        }
-        return s + 1;
-      });
-    }, per);
+    const timers = [];
+    let s = 0;
+    const advance = () => {
+      if (s + 1 >= STAGES.length) {
+        timers.push(setTimeout(finish, reduced ? 150 : 650));
+        return;
+      }
+      s += 1;
+      setStage(s);
+      timers.push(setTimeout(advance, per));
+    };
+    timers.push(setTimeout(advance, per));
     const c = setInterval(() => {
       setCoords((p) => ({
         lat: p.lat + (Math.random() - 0.5) * 0.0004,
@@ -55,7 +59,7 @@ export default function BootScreen({ onDone }) {
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      clearInterval(t);
+      timers.forEach(clearTimeout);
       clearInterval(c);
       window.removeEventListener('keydown', onKey);
     };

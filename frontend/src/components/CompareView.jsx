@@ -8,12 +8,6 @@ import { resolveAssetUrl } from '../services/api.js';
  * A drag slider wipes between the two. Layer tabs switch which AI output
  * is shown on the right. Everything comes from live backend responses.
  */
-const LAYERS = [
-  { key: 'parcels', label: 'Parcels' },
-  { key: 'buildings', label: 'Buildings' },
-  { key: 'features', label: 'Roads + Features' },
-];
-
 export default function CompareView({ detection, features, parcelResult, originalPreview }) {
   const [pos, setPos] = useState(50);
   const trackRef = useRef(null);
@@ -28,7 +22,7 @@ export default function CompareView({ detection, features, parcelResult, origina
         file: parcelResult.annotated_image,
         stats: [
           `${parcelResult.parcel_count ?? (parcelResult.parcels || []).length} parcels`,
-          `~${parcelResult.total_area_estimated_m2} m² total`,
+          `~${parcelResult.total_area_estimated_m2 ?? '—'} m² total`,
           `${Number(parcelResult.average_confidence ?? 0).toFixed(2)} avg conf`,
         ],
         legend: [
@@ -205,5 +199,3 @@ export default function CompareView({ detection, features, parcelResult, origina
     </section>
   );
 }
-
-export { LAYERS };

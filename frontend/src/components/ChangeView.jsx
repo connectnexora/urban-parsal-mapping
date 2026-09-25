@@ -226,7 +226,7 @@ export default function ChangeView({
                 onClick={() => setStatusTab(st)}
               >
                 <span className="legend-dot" style={st === 'ALL' ? {} : { background: CHANGE_DOT[st] }} />
-                {' '}{st}{st === 'ALL' ? ` (${changes.length})` : ` (${counts[st.toLowerCase()] ?? 0})`}
+                {' '}{st}{st === 'ALL' ? ` (${changes.length})` : ` (${counts[st] ?? 0})`}
               </button>
             ))}
           </div>
@@ -244,11 +244,11 @@ export default function ChangeView({
                         <span className="legend-dot" style={{ background: CHANGE_DOT[c.status] || '#fff' }} />
                         {' '}<b>{c.status}</b>
                       </td>
-                      <td>{c.kind}</td>
-                      <td>{c.label}</td>
-                      <td>{Number(c.confidence).toFixed(3)}</td>
-                      <td>{c.area_m2}</td>
-                      <td className="mono">{c.method}</td>
+                      <td>{c.kind ?? '—'}</td>
+                      <td>{c.label ?? '—'}</td>
+                      <td>{Number(c.confidence ?? 0).toFixed(3)}</td>
+                      <td>{c.area_m2 ?? c.area_px ?? '—'}</td>
+                      <td className="mono">{c.method ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

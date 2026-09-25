@@ -134,15 +134,15 @@ export default function ReportModal({
                 <tbody>
                   {parcels.map((p) => {
                     const cov = coverageById[p.parcel_id] || { count: 0, coveragePct: 0 };
-                    const areaM2 = p.area_m2 ?? p.area;
+                    const areaM2 = p.area_m2 ?? p.area ?? 0;
                     const areaHa = p.area_ha ?? (areaM2 / 10000);
                     return (
                       <tr key={p.parcel_id}>
                         <td><b>{p.parcel_id}</b></td>
                         <td>{areaM2} m² ({Number(areaHa).toFixed(4)} ha)</td>
-                        <td>{p.perimeter_m ?? p.perimeter} m</td>
+                        <td>{p.perimeter_m ?? p.perimeter ?? '—'} m</td>
                         <td>{cov.count} (~{cov.coveragePct}%)</td>
-                        <td>{Number(p.confidence).toFixed(3)}</td>
+                        <td>{Number(p.confidence ?? 0).toFixed(3)}</td>
                       </tr>
                     );
                   })}

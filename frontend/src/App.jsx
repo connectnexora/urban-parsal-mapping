@@ -57,12 +57,12 @@ export default function App() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const enterDemo = async () => {
-    if (demoMode !== 'off' || isDetecting || isExtracting) return;
+    if (demoMode !== 'off' || isDetecting || isExtracting || isComparing) return;
     setDemoMode('loading');
     setDemoError(null);
     setIsExtracting(true);
     try {
-      const abs = (p) => `${window.location.origin}/${String(p || '').replace(/^\//, '')}`;
+      const abs = (p) => new URL(String(p || '').replace(/^\//, ''), window.location.href).href;
       setDemoStage('Loading prepared demo image…');
       const imgUrl = abs('demo/demo-aerial.png');
       const annUrl = abs('demo/demo-aerial-annotated.png');
@@ -73,6 +73,11 @@ export default function App() {
         );
       }
       const blob = await resp.blob();
+      // Demo replaces any live/change state: mixed frames would misalign the
+      // schematic map, which derives one shared frame from result dims.
+      setChangeResult(null);
+      setChangeError(null);
+      setSelectedParcelId(null);
       setOriginalPreview(imgUrl);
       setDemoStage('Replaying precomputed AI results (no live inference)…');
       await sleep(900);
@@ -111,6 +116,9 @@ export default function App() {
     setFeaturesError(null);
     setParcelResult(null);
     setParcelError(null);
+    setChangeResult(null);
+    setChangeError(null);
+    setIsComparing(false);
     setOriginalPreview(null);
     setSelectedParcelId(null);
     setTimings({});

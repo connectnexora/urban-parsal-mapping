@@ -7,6 +7,8 @@
 export default function DemoBanner({ mode, stage, error, meta, counts, onExit }) {
   if (mode === 'off') return null;
 
+  const safeCounts = counts || {};
+
   return (
     <section className="card detect-section demo-banner" aria-live="polite">
       <div className="detect-head">
@@ -34,9 +36,9 @@ export default function DemoBanner({ mode, stage, error, meta, counts, onExit })
 
       {mode === 'active' && meta && (
         <div className="file-meta">
-          <div className="meta-row"><span>Scene</span><strong>{meta.name} (synthetic, no real location)</strong></div>
-          <div className="meta-row"><span>Image</span><strong>demo-aerial.png · {meta.image.width} × {meta.image.height} px · GSD {meta.gsd_m_per_px} m/px</strong></div>
-          <div className="meta-row"><span>Contents</span><strong>{counts.parcels} parcels · {counts.buildings} buildings · {counts.features} features</strong></div>
+          <div className="meta-row"><span>Scene</span><strong>{meta?.name || 'Demo scene'} (synthetic, no real location)</strong></div>
+          <div className="meta-row"><span>Image</span><strong>demo-aerial.png · {meta?.image?.width ?? '—'} × {meta?.image?.height ?? '—'} px · GSD {meta?.gsd_m_per_px ?? '—'} m/px</strong></div>
+          <div className="meta-row"><span>Contents</span><strong>{safeCounts.parcels ?? '—'} parcels · {safeCounts.buildings ?? '—'} buildings · {safeCounts.features ?? '—'} features</strong></div>
         </div>
       )}
 

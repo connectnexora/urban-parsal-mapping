@@ -1,6 +1,6 @@
 import {
   MapContainer, TileLayer, Marker, Popup, ImageOverlay, Rectangle, Polygon,
-  Tooltip, LayersControl, GeoJSON, ScaleControl, ZoomControl, useMap,
+  LayersControl, GeoJSON, ScaleControl, ZoomControl, useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import { useEffect, useMemo, useState } from 'react';
@@ -149,13 +149,13 @@ export default function MapView({
   }, [featureResult, detection]);
 
   const coverageById = useMemo(
-    () => buildingCoverage(parcels, buildingItems),
-    [parcels, buildingItems],
+    () => buildingCoverage(parcelResult?.parcels || [], buildingItems),
+    [parcelResult, buildingItems],
   );
 
   const parcelsGeoJSON = useMemo(
     () => (parcels.length ? parcelsToGeoJSON(parcelResult, coverageById) : null),
-    [parcelResult, parcels, coverageById],
+    [parcelResult, parcels.length, coverageById],
   );
   const buildingsGeoJSON = useMemo(
     () => (buildingItems.length ? detectionsToGeoJSON(buildingItems, 'buildings') : null),
@@ -182,7 +182,7 @@ export default function MapView({
 
   const changesGeoJSON = useMemo(
     () => (changes.length ? changesToGeoJSON(changes) : null),
-    [changes],
+    [changeResult],
   );
 
   // Combined bounds of everything detected (for fit-to-area).
@@ -230,7 +230,9 @@ export default function MapView({
 
   const parcelStyle = (feature) => {
     const idx = parcels.findIndex((p) => p.parcel_id === feature?.properties?.parcel_id);
-    const color = PARCEL_PALETTE[Math.max(0, idx) % PARCEL_PALETTE.length];
+    const color = idx < 0
+      ? '#9aa7c2' // unknown id: neutral gray, never impersonates a parcel
+      : PARCEL_PALETTE[idx % PARCEL_PALETTE.length];
     const selected = feature?.properties?.parcel_id === selectedParcelId;
     return {
       color,
@@ -284,16 +286,20 @@ export default function MapView({
   const hasFeatures = Object.keys(featureGeoJSON).length > 0;
   const hasChanges = changes.length > 0;
   const changeCounts = changeResult?.counts || {};
+  // Feature layers need geometry + frame, NOT the browser preview: TIFFs
+  // have no preview (overlayUrl null) but their vectors still render.
+  const hasVectors = !!(frame && dims && (hasParcels || hasBuildings || hasFeatures || hasChanges));
   const hasOverlay = !!(frame && overlayUrl && (featureResult || parcelResult || detection));
-  const hasAnything = hasParcels || hasBuildings || hasFeatures || hasOverlay || hasChanges;
+  const hasAnything = hasVectors || hasOverlay;
 
+  const shownBits = [
+    hasParcels ? `${parcels.length} parcel(s)` : null,
+    hasBuildings ? `${buildingItems.length} building(s)` : null,
+    hasFeatures ? `${Object.values(featureGeoJSON).reduce((n, g) => n + g.features.length, 0)} other feature(s)` : null,
+    hasChanges ? `${changes.length} change(s)` : null,
+  ].filter(Boolean);
   const sub = hasAnything
-    ? `Showing ${hasParcels ? `${parcels.length} parcel(s)` : ''}` +
-      `${hasParcels && (hasBuildings || hasFeatures || hasChanges) ? ' + ' : ''}` +
-      `${hasBuildings ? `${buildingItems.length} building(s)` : ''}` +
-      `${hasFeatures ? ` + ${Object.values(featureGeoJSON).reduce((n, g) => n + g.features.length, 0)} other feature(s)` : ''}` +
-      `${hasChanges ? ` + ${changes.length} change(s)` : ''}` +
-      ` — schematic overlays, NOT legal cadastre. Click a parcel for details.`
+    ? `Showing ${shownBits.join(' + ')} — schematic overlays, NOT legal cadastre. Click a parcel for details.`
     : 'Parcel polygons, buildings, roads and other features overlay here after the AI runs.';
 
   return (
@@ -339,7 +345,7 @@ export default function MapView({
           {parcelsGeoJSON && toLatLng && (
             <LayersControl.Overlay checked name={`Parcels (approx) (${parcels.length})`}>
               <GeoJSON
-                key={`parcels-${parcels.length}-${selectedParcelId || 'none'}`}
+                key={`parcels-${parcelResult.filename || 'nofile'}-${parcelResult.timestamp || ''}-${parcels.length}-${selectedParcelId || 'none'}`}
                 data={parcelsGeoJSON}
                 coordsToLatLng={toLatLng}
                 style={parcelStyle}
@@ -351,7 +357,7 @@ export default function MapView({
           {buildingsGeoJSON && toLatLng && (
             <LayersControl.Overlay checked name={`Buildings (${buildingItems.length})`}>
               <GeoJSON
-                key={`bldg-${buildingItems.length}`}
+                key={`bldg-${(detection || featureResult)?.filename || 'nofile'}-${(detection || featureResult)?.timestamp || ''}-${buildingItems.length}`}
                 data={buildingsGeoJSON}
                 coordsToLatLng={toLatLng}
                 style={{ color: colors.buildings, weight: 2, fillOpacity: 0.15 }}
@@ -360,7 +366,7 @@ export default function MapView({
             </LayersControl.Overlay>
           )}
 
-          {hasOverlay && ['roads', 'vegetation', 'water', 'other'].map((key) => {
+          {hasVectors && ['roads', 'vegetation', 'water', 'other'].map((key) => {
             const items = feats[key] || [];
             const n = counts[key] ?? items.length;
             return (
@@ -371,7 +377,7 @@ export default function MapView({
           })}
 
           {changesGeoJSON && toLatLng && CHANGE_STATUSES.map((st) => {
-            const n = changeCounts[st.toLowerCase()] ?? changes.filter((c) => c.status === st).length;
+            const n = changeCounts[st] ?? changes.filter((c) => c.status === st).length;
             if (!n) return null;
             const data = {
               ...changesGeoJSON,
@@ -384,7 +390,7 @@ export default function MapView({
                 name={`Changes: ${st} (${n})`}
               >
                 <GeoJSON
-                  key={`chg-${st}-${n}`}
+                  key={`chg-${st}-${changeResult.file_a || 'a'}-${changeResult.file_b || 'b'}-${changeResult.timestamp || ''}-${n}`}
                   data={data}
                   coordsToLatLng={toLatLng}
                   style={changeStyle}
@@ -429,7 +435,7 @@ export default function MapView({
           );
         })}
         {hasChanges && CHANGE_STATUSES.map((st) => {
-          const n = changeCounts[st.toLowerCase()] ?? changes.filter((c) => c.status === st).length;
+          const n = changeCounts[st] ?? changes.filter((c) => c.status === st).length;
           if (!n) return null;
           return (
             <div key={st} className="layer-row" title={`AI-estimated ${st.toLowerCase()} changes (verify by surveyor)`}>
@@ -444,6 +450,9 @@ export default function MapView({
             ? '⚠️ Schematic overlays: image-pixel geometry fitted around the centre for inspection — NOT georeferenced survey data and NOT legal cadastre. True geometry is in the annotated images + GeoJSON below. Toggle Streets/Satellite (top-right) and layers as needed.'
             : '⚠️ No AI overlays yet — run Detect Buildings, Extract Parcels, or Process Image (AI Features). Parcel boundaries are always AI-estimated/approximate.'}
         </p>
+        {['roads', 'vegetation', 'water', 'other'].some((key) => (feats[key] || []).length > 150) && (
+          <p className="mono">Note: feature layers show the first 150 shapes per category — full lists are in the tables below.</p>
+        )}
       </div>
     </section>
   );

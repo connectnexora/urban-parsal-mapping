@@ -44,7 +44,6 @@ export default function DetectionResults({
 
   const detUrl = resolveAssetUrl(detection?.annotated_image);
   const featUrl = resolveAssetUrl(features?.annotated_image);
-  const annotatedUrl = featUrl || detUrl;
   const dets = detection?.detections || [];
   const count = detection?.building_count ?? dets.length;
   const avg = detection?.average_confidence ?? 0;
@@ -60,9 +59,9 @@ export default function DetectionResults({
             <div>
               <h2>4 · AI Building Detection (YOLO)</h2>
               <p className="sub">
-                Model <b>{detection.model?.name}</b> ({detection.model?.type}) ·{' '}
-                {count} building(s) · avg confidence {Number(avg).toFixed(2)} ·{' '}
-                {detection.image_width}×{detection.image_height}px
+                Model <b>{detection.model?.name ?? 'unknown model'}</b> ({detection.model?.type ?? 'unknown type'}) ·{' '}
+                {count} building(s) · avg confidence {Number(avg ?? 0).toFixed(2)} ·{' '}
+                {detection.image_width ?? '—'}×{detection.image_height ?? '—'}px
               </p>
             </div>
             <div className="detect-badges">
@@ -101,9 +100,9 @@ export default function DetectionResults({
                   {dets.map((d, i) => (
                     <tr key={i}>
                       <td>{i + 1}</td>
-                      <td>{d.class}</td>
-                      <td>{Number(d.confidence).toFixed(3)}</td>
-                      <td className="mono">[{d.bbox.join(', ')}]</td>
+                      <td>{d.class ?? '—'}</td>
+                      <td>{Number(d.confidence ?? 0).toFixed(3)}</td>
+                      <td className="mono">[{Array.isArray(d.bbox) ? d.bbox.join(', ') : '—'}]</td>
                     </tr>
                   ))}
                 </tbody>
@@ -174,10 +173,10 @@ export default function DetectionResults({
                       {shown.map((d, i) => (
                         <tr key={i}>
                           <td>{i + 1}</td>
-                          <td>{d.class}</td>
-                          <td>{Number(d.confidence).toFixed(3)}</td>
-                          <td className="mono">[{d.bbox.join(', ')}]</td>
-                          <td className="mono">{d.method}</td>
+                          <td>{d.class ?? '—'}</td>
+                          <td>{Number(d.confidence ?? 0).toFixed(3)}</td>
+                          <td className="mono">[{Array.isArray(d.bbox) ? d.bbox.join(', ') : '—'}]</td>
+                          <td className="mono">{d.method ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>

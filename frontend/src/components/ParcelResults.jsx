@@ -32,9 +32,11 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
   const geojsonUrl = resolveAssetUrl(parcelResult.geojson_file);
   const parcels = parcelResult.parcels || [];
   const geo = parcelResult.area_source === 'georeferenced';
-  const areaOf = (p) => p.area_m2 ?? p.area;
+  const totalM2 = Number(parcelResult.total_area_estimated_m2 ?? 0);
+  const totalHa = parcelResult.total_area_estimated_ha ?? totalM2 / 10000;
+  const areaOf = (p) => p.area_m2 ?? p.area ?? 0;
   const haOf = (p) => (p.area_ha ?? ((p.area_m2 ?? p.area ?? 0) / 10000));
-  const perimOf = (p) => p.perimeter_m ?? p.perimeter;
+  const perimOf = (p) => p.perimeter_m ?? p.perimeter ?? '—';
 
   return (
     <section className="card detect-section">
@@ -42,21 +44,21 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
         <div>
           <h2>5 · AI Parcel Boundaries — approximate, NOT legal cadastre</h2>
           <p className="sub">
-            Method <b>{parcelResult.method}</b> · {parcelResult.parcel_count} parcel(s) ·{' '}
-            total ~{parcelResult.total_area_estimated_m2} m² ({parcelResult.total_area_estimated_ha ?? (parcelResult.total_area_estimated_m2 / 10000).toFixed(4)} ha) · avg conf {Number(parcelResult.average_confidence ?? 0).toFixed(2)} ·{' '}
-            GSD {parcelResult.gsd_m_per_px} m/px · {parcelResult.image_width}×{parcelResult.image_height}px
+            Method <b>{parcelResult.method || '—'}</b> · {parcelResult.parcel_count ?? parcels.length} parcel(s) ·{' '}
+            total ~{totalM2} m² ({Number(totalHa).toFixed(4)} ha) · avg conf {Number(parcelResult.average_confidence ?? 0).toFixed(2)} ·{' '}
+            GSD {parcelResult.gsd_m_per_px ?? '—'} m/px · {parcelResult.image_width ?? '—'}×{parcelResult.image_height ?? '—'}px
           </p>
         </div>
         <div className="detect-badges">
-          <span className="badge">🧭 {parcelResult.parcel_count} parcels</span>
-          <span className="badge">📐 ~{parcelResult.total_area_estimated_m2} m² total</span>
+          <span className="badge">🧭 {parcelResult.parcel_count ?? parcels.length} parcels</span>
+          <span className="badge">📐 ~{totalM2} m² total</span>
           <span className={`badge ${geo ? 'badge-geo' : 'badge-est'}`}>
             {geo ? '🛰️ Georeferenced' : '📐 Estimated image-based'}
           </span>
         </div>
       </div>
 
-      <p className="warn-box">{parcelResult.disclaimer}</p>
+      {parcelResult.disclaimer && <p className="warn-box">{parcelResult.disclaimer}</p>}
       {parcelResult.area_label && <p className="mono">{parcelResult.area_label}</p>}
       {parcelResult.notes && <p className="mono">{parcelResult.notes}</p>}
 
@@ -105,8 +107,8 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
                   <td>{areaOf(p)}</td>
                   <td>{Number(haOf(p)).toFixed(4)}</td>
                   <td>{perimOf(p)}</td>
-                  <td>{Number(p.confidence).toFixed(3)}</td>
-                  <td>{p.num_vertices}</td>
+                  <td>{Number(p.confidence ?? 0).toFixed(3)}</td>
+                  <td>{p.num_vertices ?? '—'}</td>
                   <td>
                     <button className="btn small" onClick={() => onSelectParcel?.(p.parcel_id)}>
                       {p.parcel_id === selectedParcelId ? 'Selected ✓' : 'Show on map'}
