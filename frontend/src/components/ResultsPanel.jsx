@@ -1,14 +1,28 @@
+<<<<<<< HEAD
 export default function ResultsPanel({ backendStatus, healthData, detection, parcelResult }) {
+=======
+export default function ResultsPanel({ backendStatus, healthData, detection, features }) {
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   const dot = backendStatus === 'ok' ? 'dot ok' : backendStatus === 'down' ? 'dot bad' : 'dot';
   const label =
     backendStatus === 'ok' ? 'Backend: connected' : backendStatus === 'down' ? 'Backend: offline' : 'Backend: not tested';
 
+<<<<<<< HEAD
   const hasDet = detection != null;
   const buildings = hasDet ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
   const avgConf = hasDet ? (detection.average_confidence ?? 0).toFixed(2) : '—';
   const hasParcels = parcelResult != null;
   const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
   const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
+=======
+  const hasResult = detection != null;
+  const hasFeatures = features != null;
+  const buildings = hasResult ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
+  const avgConf = hasResult ? (detection.average_confidence ?? 0).toFixed(2) : '—';
+  const total = hasResult ? (detection.total_detections ?? detection.all_detections?.length ?? '—') : '—';
+  const modelName = hasResult ? detection.model?.name || detection.model_name || '—' : '—';
+  const counts = features?.counts || {};
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
   return (
     <section className="card">
@@ -50,6 +64,20 @@ export default function ResultsPanel({ backendStatus, healthData, detection, par
           )}
           {detection?.warning && <p className="warn-box">{detection.warning}</p>}
           {hasParcels && <p className="warn-box">{parcelResult.disclaimer}</p>}
+        </div>
+      )}
+
+      {hasFeatures && (
+        <div style={{ marginTop: 12 }}>
+          <p className="sub">Feature pipeline (POST /detect/features)</p>
+          <div className="stats">
+            <div className="stat"><div className="v">{counts.buildings ?? 0}</div><div className="l">Buildings</div></div>
+            <div className="stat"><div className="v">{counts.roads ?? 0}</div><div className="l">Roads</div></div>
+            <div className="stat"><div className="v">{counts.vegetation ?? 0}</div><div className="l">Vegetation</div></div>
+            <div className="stat"><div className="v">{counts.water ?? 0}</div><div className="l">Water</div></div>
+            <div className="stat"><div className="v">{counts.other ?? 0}</div><div className="l">Other</div></div>
+            <div className="stat"><div className="v">{counts.total ?? 0}</div><div className="l">Total</div></div>
+          </div>
         </div>
       )}
     </section>

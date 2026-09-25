@@ -358,7 +358,41 @@ def annotate_image(
     detections explicitly). Returns the output path. Raises RuntimeError when
     the image cannot be read/written.
     """
-    import cv2
+    try:
+        import cv2  # type: ignore
+    except Exception:
+        cv2 = None  # type: ignore
+    if cv2 is None:
+        # Minimal environments (no OpenCV): draw with PIL instead.
+        from PIL import Image as _PILImage, ImageDraw as _ImageDraw, ImageFont as _ImageFont
+
+        image_path = Path(image_path)
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with _PILImage.open(image_path) as _im:
+                _img = _im.convert("RGB")
+                _w, _h = _img.size
+                _d = _ImageDraw.Draw(_img)
+                try:
+                    _font = _ImageFont.load_default(size=max(12, max(_w, _h) // 80))
+                except Exception:
+                    _font = _ImageFont.load_default()
+                for det in detections or []:
+                    try:
+                        _x1, _y1, _x2, _y2 = (int(v) for v in det["bbox"])
+                    except Exception:
+                        continue
+                    _d.rectangle([_x1, _y1, _x2, _y2], outline=(46, 204, 113), width=2)
+                    _d.text((_x1 + 3, max(0, _y1 - 14)),
+                            f"{det.get('class', 'obj')} {float(det.get('confidence', 0)):.2f}",
+                            fill=(46, 204, 113), font=_font)
+                _d.text((10, 10), f"Buildings: {len(detections or [])}",
+                        fill=(56, 189, 248), font=_font)
+                _img.save(output_path, "JPEG", quality=90)
+        except Exception as exc:
+            raise RuntimeError(f"Could not annotate image: {exc}")
+        return output_path
 
     image_path = Path(image_path)
     output_path = Path(output_path)

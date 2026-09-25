@@ -1,5 +1,6 @@
 """
 AI-Based Automated Urban Parcel Mapping and Cadastral Feature Extraction
+<<<<<<< HEAD
 FastAPI backend — YOLO building detection + approximate parcel extraction.
 
 - Models load SAFELY at startup (server never crashes on missing weights;
@@ -9,12 +10,29 @@ FastAPI backend — YOLO building detection + approximate parcel extraction.
   available, else OpenCV watershed/contours) -> boundary extraction ->
   polygon generation -> simplification -> area/perimeter estimates.
   Parcels are ALWAYS labelled AI-estimated/approximate, never legal cadastre.
+=======
+FastAPI backend — STEP 3: multi-class feature-extraction pipeline.
+
+- Model is loaded SAFELY once at startup (never crashes the server when the
+  weight file is missing — YOLO-dependent categories then come back EMPTY
+  with reasons instead of fake boxes).
+- POST /upload: validate + save, return filename/dimensions/size/status.
+- POST /detect/buildings: YOLO building-only detection + annotated image.
+- POST /detect/features: full pipeline -> features{buildings, roads,
+  vegetation, water, other} with class/confidence/geometry per feature,
+  plus an annotated image under outputs/ served at /outputs/<file>.
+- Vegetation/water come from classical colour segmentation (no model
+  needed). Roads need a road-capable model; otherwise honestly empty.
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 """
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+<<<<<<< HEAD
 import json
+=======
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 import re
 import uuid
 
@@ -32,12 +50,20 @@ try:
         annotate_image,
         REQUIRED_MODEL_MESSAGE,
     )
+<<<<<<< HEAD
     from services.parcels import (
         get_parcel_status,
         init_parcel_service,
         extract_parcels,
         annotate_parcels,
         APPROX_DISCLAIMER,
+=======
+    from services.features import (
+        extract_features,
+        annotate_features,
+        FEATURE_TYPES,
+        FEATURE_COLORS_HEX,
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.detection import (
@@ -47,12 +73,20 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
         annotate_image,
         REQUIRED_MODEL_MESSAGE,
     )
+<<<<<<< HEAD
     from backend.services.parcels import (
         get_parcel_status,
         init_parcel_service,
         extract_parcels,
         annotate_parcels,
         APPROX_DISCLAIMER,
+=======
+    from backend.services.features import (
+        extract_features,
+        annotate_features,
+        FEATURE_TYPES,
+        FEATURE_COLORS_HEX,
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     )
 
 from PIL import Image, UnidentifiedImageError
@@ -69,10 +103,17 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
+<<<<<<< HEAD
 APP_VERSION = "0.3.0"
 
 # Prototype cap — drone frames are big, but bound memory per request.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+=======
+# Prototype cap — drone frames are big, but bound memory per request.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
+APP_VERSION = "0.3.0"
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +145,16 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Urban Parcel Mapping API",
+<<<<<<< HEAD
     description="Drone imagery -> YOLO buildings + approximate parcel polygons.",
+=======
+    description="Drone imagery -> multi-class feature extraction -> annotated outputs.",
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     version=APP_VERSION,
     lifespan=lifespan,
 )
 
+# Allow the Vite React dev server to call the API from the browser.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -127,7 +173,11 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Upload helpers (hardened: traversal-safe names, size cap, image validation)
+=======
+# Upload helpers
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 # ---------------------------------------------------------------------------
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -200,6 +250,7 @@ async def _store_upload(file: UploadFile) -> dict:
     return {
         "path": dest,
         "filename": safe_name,
+        "path": str(dest),
         "original_filename": original,
         "width": width,
         "height": height,
@@ -213,6 +264,10 @@ async def _store_upload(file: UploadFile) -> dict:
 # ---------------------------------------------------------------------------
 @app.get("/")
 def root():
+<<<<<<< HEAD
+=======
+    """Root endpoint — quick human-readable check."""
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     return {
         "service": "Urban Parcel Mapping API",
         "version": APP_VERSION,
@@ -220,17 +275,27 @@ def root():
         "docs": "/docs",
         "health": "/api/health",
         "detect_buildings": "/detect/buildings",
+<<<<<<< HEAD
         "detect_parcels": "/detect/parcels",
         "model_status": "/detect/model-status",
         "parcel_status": "/detect/parcel-status",
         "disclaimer": APPROX_DISCLAIMER,
+=======
+        "detect_features": "/detect/features",
+        "model_status": "/detect/model-status",
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     }
 
 
 @app.get("/api/health")
 def health():
+<<<<<<< HEAD
     status = get_model_status()
     pstatus = get_parcel_status()
+=======
+    """Health check used by the frontend 'Test Connection' button."""
+    status = get_model_status()
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     return {
         "status": "ok",
         "service": "urban-parcel-mapping-backend",
@@ -240,13 +305,17 @@ def health():
         "model_name": status["model_name"],
         "model_type": status["model_type"],
         "supports_buildings": status["supports_buildings"],
+<<<<<<< HEAD
         "parcel_ready": pstatus.get("ready", False),
         "parcel_method_hint": "yolo-seg" if pstatus.get("yolo_seg_available") else "classical-watershed-contours",
+=======
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     }
 
 
 @app.get("/api/info")
 def info():
+<<<<<<< HEAD
     status = get_model_status()
     pstatus = get_parcel_status()
     return {
@@ -258,22 +327,42 @@ def info():
             "simplification -> area; NOT legal cadastre)",
             "3. Annotated images + GeoJSON saved to outputs/, served at /outputs/<file>",
             "4. Interactive map overlay — parcel polygons in MapView",
+=======
+    """Describe the pipeline (no AI execution here)."""
+    status = get_model_status()
+    return {
+        "pipeline": [
+            "1. Upload drone/aerial image",
+            "2. AI analysis: /detect/buildings (YOLO) or /detect/features (full pipeline)",
+            "3. Annotated image saved to outputs/ and served at /outputs/<file>",
+            "4. Interactive map overlays per feature type — frontend layers",
+            "5. Parcel/property report — upcoming",
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
         ],
         "stack": {
             "frontend": "React + Vite + Leaflet",
             "backend": "FastAPI",
+<<<<<<< HEAD
             "ai": "Ultralytics YOLO (+YOLO-seg when available) / OpenCV watershed fallback",
         },
         "ai_status": "ready" if status["loaded"] else "model_missing",
         "model": status,
         "parcels": pstatus,
         "disclaimer": APPROX_DISCLAIMER,
+=======
+            "ai": "Ultralytics YOLO + classical colour segmentation",
+        },
+        "feature_types": list(FEATURE_TYPES),
+        "ai_status": "ready" if status["loaded"] else "model_missing",
+        "model": status,
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     }
 
 
 @app.get("/detect/model-status")
 @app.get("/api/detect/model-status")
 def model_status():
+<<<<<<< HEAD
     """Expose how the YOLO model was loaded (or why it is missing)."""
     return get_model_status()
 
@@ -285,6 +374,12 @@ def parcel_status():
     return get_parcel_status()
 
 
+=======
+    """Expose how the model was loaded (or why it is missing)."""
+    return get_model_status()
+
+
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 @app.post("/upload", status_code=201)
 async def upload(file: UploadFile = File(...)):
     """
@@ -293,21 +388,36 @@ async def upload(file: UploadFile = File(...)):
     No AI detection runs on this endpoint.
     """
     stored = await _store_upload(file)
+<<<<<<< HEAD
     return {k: v for k, v in stored.items() if k != "path"}
+=======
+    return {k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")}
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
 
 @app.post("/api/upload", status_code=201)
 async def upload_image(file: UploadFile = File(...)):
+<<<<<<< HEAD
     """
     Same storage + validation as POST /upload; kept for the Vite dev
     proxy and the existing UI. Deliberately returns NO detections.
     """
+=======
+    """Same storage + validation as POST /upload; kept for the Vite dev proxy
+    and the existing UI (legacy connectivity check)."""
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     stored = await _store_upload(file)
     return JSONResponse(
         status_code=201,
         content={
+<<<<<<< HEAD
             **{k: v for k, v in stored.items() if k != "path"},
             "message": "File received. Run POST /detect/buildings or /detect/parcels for AI analysis.",
+=======
+            **{k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")},
+            "message": "File received. Run POST /detect/buildings or /detect/features for AI analysis.",
+            "ai_status": "not_implemented",
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
             "detections": None,  # explicitly null — no fake results
         },
     )
@@ -319,9 +429,15 @@ async def _detect_buildings_impl(
     iou: float,
 ) -> dict:
     stored = await _store_upload(file)
+<<<<<<< HEAD
     saved_path: Path = stored["path"]
     saved_name: str = stored["filename"]
     size_bytes: int = stored["size_bytes"]
+=======
+    saved_path = Path(stored["path"])
+    saved_name = stored["filename"]
+    size_bytes = stored["size_bytes"]
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
     # Model missing -> 503 with actionable instructions (never fake boxes).
     status = get_model_status()
@@ -402,6 +518,7 @@ async def detect_buildings_api_alias(
     return await _detect_buildings_impl(file, confidence, iou)
 
 
+<<<<<<< HEAD
 async def _detect_parcels_impl(
     file: UploadFile,
     gsd: float,
@@ -458,10 +575,59 @@ async def _detect_parcels_impl(
         geojson_path.write_text(json.dumps(result["geojson"], indent=2), encoding="utf-8")
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
+=======
+async def _detect_features_impl(
+    file: UploadFile,
+    confidence: float,
+    iou: float,
+) -> dict:
+    """Full feature-extraction pipeline (never invents detections)."""
+    stored = await _store_upload(file)
+    saved_path = Path(stored["path"])
+    saved_name = stored["filename"]
+
+    status = get_model_status()
+    yolo_dets: list = []
+    warnings: list = []
+    if status["loaded"]:
+        try:
+            result = await run_in_threadpool(run_detection, saved_path, confidence, iou)
+            yolo_dets = result["all_detections"]
+            if result.get("warning"):
+                warnings.append(result["warning"])
+        except Exception as exc:
+            # Honest degradation: YOLO failed, classical branch still runs.
+            warnings.append(f"YOLO inference failed ({exc}); YOLO-based categories are empty.")
+            status = {**status, "loaded": False}
+    else:
+        warnings.append(
+            "YOLO model unavailable — buildings/roads/other come only from a loaded model "
+            "and are empty in this response. Vegetation/water use classical segmentation."
+        )
+
+    pipe = await run_in_threadpool(
+        extract_features, saved_path, yolo_dets, status["loaded"]
+    )
+    features = pipe["features"]
+    counts = {k: len(v) for k, v in features.items()}
+    counts["total"] = sum(counts.values())
+
+    stem = Path(saved_name).stem
+    annotated_name = f"{stem}_features.jpg"
+    annotated_path = OUTPUTS_DIR / annotated_name
+    try:
+        await run_in_threadpool(annotate_features, saved_path, features, annotated_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Annotation failed: {exc}")
+
+    buildings = features["buildings"]
+    avg_conf = round(sum(d["confidence"] for d in buildings) / len(buildings), 4) if buildings else 0.0
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
     return {
         "filename": saved_name,
         "size_bytes": stored["size_bytes"],
+<<<<<<< HEAD
         "image_width": result["image_width"],
         "image_height": result["image_height"],
         "gsd_m_per_px": result["gsd_m_per_px"],
@@ -478,10 +644,35 @@ async def _detect_parcels_impl(
         "geojson_filename": geojson_name,
         "disclaimer": result["disclaimer"],
         "notes": result["notes"],
+=======
+        "image_width": stored["width"],
+        "image_height": stored["height"],
+        "model": {
+            "name": status["model_name"],
+            "type": status["model_type"],
+            "supports_buildings": status["supports_buildings"],
+            "loaded": status["loaded"],
+        },
+        # Required shape: detections organised by feature type.
+        "features": features,
+        "counts": counts,
+        # Why an empty category is empty (model missing vs nothing found).
+        "reasons": pipe["reasons"],
+        "feature_colors": FEATURE_COLORS_HEX,
+        # Backwards-compatible building summary (mirrors /detect/buildings).
+        "detections": buildings,
+        "building_count": len(buildings),
+        "average_confidence": avg_conf,
+        "annotated_image": f"/outputs/{annotated_name}",
+        "annotated_image_file": annotated_name,
+        "segmentation_stats": pipe.get("segmentation_stats", {}),
+        "warnings": warnings,
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
+<<<<<<< HEAD
 @app.post("/detect/parcels")
 async def detect_parcels(
     file: UploadFile = File(...),
@@ -516,3 +707,39 @@ async def detect_parcels_api_alias(
 ):
     """Vite-proxy alias for POST /detect/parcels."""
     return await _detect_parcels_impl(file, gsd, epsilon, conf, max_parcels)
+=======
+@app.post("/detect/features")
+async def detect_features(
+    file: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+):
+    """Run the full feature-extraction pipeline on an uploaded drone image.
+
+    Returns:
+        {
+          "features": {
+            "buildings": [{"class", "confidence", "bbox", "polygon", ...}],
+            "roads": [...],
+            "vegetation": [...],
+            "water": [...],
+            "other": [...]
+          },
+          "counts": {...}, "reasons": {...},
+          "annotated_image": "/outputs/<file>_features.jpg", ...
+        }
+
+    Empty categories are honest (see `reasons`) — never fabricated.
+    """
+    return await _detect_features_impl(file, confidence, iou)
+
+
+# Alias under /api/* so the Vite dev proxy (`/api -> :8000`) works too.
+@app.post("/api/detect/features")
+async def detect_features_api_alias(
+    file: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+):
+    return await _detect_features_impl(file, confidence, iou)
+>>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
