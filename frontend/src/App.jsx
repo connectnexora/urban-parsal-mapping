@@ -10,6 +10,7 @@ import SummaryStats from './components/SummaryStats.jsx';
 import ReportModal from './components/ReportModal.jsx';
 import CompareView from './components/CompareView.jsx';
 import ChangeView from './components/ChangeView.jsx';
+import BootScreen from './components/BootScreen.jsx';
 import './App.css';
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
   const [timings, setTimings] = useState({});
   const [uploadedInfo, setUploadedInfo] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [booted, setBooted] = useState(false);
 
   const selectParcel = (id) => setSelectedParcelId(id);
   const recordTiming = (key, ms, extra) => {
@@ -147,6 +149,7 @@ export default function App() {
           onClose={() => setReportOpen(false)}
         />
       )}
+      {!booted && <BootScreen onDone={() => setBooted(true)} />}
     </>
   );
 }
