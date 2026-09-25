@@ -91,3 +91,58 @@
   border-top: 1px solid var(--card-border);
   display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
+
+/* ---- Upload system ---- */
+.btn.process { margin-top: 8px; }
+.mono.ok-text { color: var(--success); }
+
+.alert-err {
+  margin: 0 0 12px; font-size: 13px; line-height: 1.5;
+  color: #fca5a5; background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  padding: 9px 11px; border-radius: 10px;
+}
+
+.file-meta, .upload-summary {
+  display: flex; flex-direction: column; gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--card-border);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 4px;
+}
+.upload-summary { margin-top: 12px; border-color: rgba(52, 211, 153, 0.35); }
+.meta-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12.5px;
+}
+.meta-row span { color: var(--muted); flex: none; }
+.meta-row strong { font-weight: 600; text-align: right; word-break: break-all; }
+.status-ok { color: var(--success); text-transform: capitalize; }
+
+.tiff-fallback {
+  display: flex; gap: 12px; align-items: center;
+  border: 1px dashed var(--card-border); border-radius: 10px;
+  padding: 12px; margin-top: 10px;
+}
+.tiff-fallback p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.tiff-icon {
+  flex: none; width: 46px; height: 46px; border-radius: 10px;
+  display: grid; place-items: center; font-weight: 800; font-size: 13px;
+  color: #06121f; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+.upload-progress { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.progress-track {
+  height: 10px; border-radius: 999px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.07); border: 1px solid var(--card-border);
+}
+.progress-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.2s ease;
+}
+
+.process-note {
+  margin: 12px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text);
+  background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.35);
+  padding: 9px 11px; border-radius: 10px;
+}

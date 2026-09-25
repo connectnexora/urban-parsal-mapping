@@ -8,11 +8,15 @@ returning fake detection results.
 """
 
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
+import re
+import uuid
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from PIL import Image, UnidentifiedImageError
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -23,6 +27,9 @@ UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+
+# Prototype cap — drone frames are big, but bound memory per request.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 # ---------------------------------------------------------------------------
 # App
@@ -94,35 +101,102 @@ def info():
     }
 
 
-@app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...)):
-    """
-    Accept an image and save it to data/uploads/.
-    Deliberately returns NO detections — Step 2 will add real AI.
-    """
-    suffix = Path(file.filename or "").suffix.lower()
+_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip directories and unsafe characters to prevent path traversal."""
+    base = Path(name or "").name.strip().lstrip(".")
+    base = _FILENAME_SAFE.sub("_", base)
+    if not base or base in {".", ".."}:
+        return "upload"
+    if len(base) > 100:
+        stem, dot, ext = base.rpartition(".")
+        base = (stem[:90] + dot + ext) if dot else base[:100]
+    return base
+
+
+def _read_dimensions(path: Path) -> tuple:
+    """Return (width, height) in pixels. Raises HTTPException if unreadable."""
+    try:
+        with Image.open(path) as img:
+            width, height = img.size
+            img.load()  # force full decode — catches truncated/corrupt files
+    except Image.DecompressionBombError as exc:
+        raise HTTPException(status_code=413, detail=f"Image pixel dimensions too large: {exc}") from exc
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"File is not a readable image: {exc}") from exc
+    if width <= 0 or height <= 0:
+        raise HTTPException(status_code=400, detail="Image has invalid dimensions.")
+    return width, height
+
+
+async def _store_upload(file: UploadFile) -> dict:
+    """Validate an upload, save it to data/uploads/, describe it. No AI runs here."""
+    original = file.filename or ""
+    suffix = Path(original).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
+            detail=f"Unsupported file type '{suffix or '(none)'}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
         )
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    safe_name = f"{timestamp}_{Path(file.filename or 'upload').name}"
-    dest = UPLOAD_DIR / safe_name
-
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
     if not content:
         raise HTTPException(status_code=400, detail="Empty file received.")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content)} bytes). Limit is {MAX_UPLOAD_BYTES} bytes.",
+        )
 
-    dest.write_bytes(content)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    safe_name = f"{stamp}_{uuid.uuid4().hex[:6]}_{_sanitize_filename(original)}"
+    dest = UPLOAD_DIR / safe_name
+    try:
+        dest.write_bytes(content)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save upload: {exc}") from exc
 
+    try:
+        width, height = _read_dimensions(dest)
+    except HTTPException:
+        dest.unlink(missing_ok=True)  # don't keep invalid files around
+        raise
+
+    return {
+        "filename": safe_name,
+        "original_filename": original,
+        "width": width,
+        "height": height,
+        "size_bytes": len(content),
+        "status": "uploaded",
+    }
+
+
+@app.post("/upload", status_code=201)
+async def upload(file: UploadFile = File(...)):
+    """
+    Receive a drone image, validate it, save it to data/uploads/,
+    and return filename, image dimensions, file size and upload status.
+    No AI detection runs on this endpoint.
+    """
+    return await _store_upload(file)
+
+
+@app.post("/api/upload", status_code=201)
+async def upload_image(file: UploadFile = File(...)):
+    """
+    Same storage + validation as POST /upload; kept for the Vite dev
+    proxy and the existing UI. Deliberately returns NO detections —
+    Step 2 will add real AI.
+    """
+    stored = await _store_upload(file)
     return JSONResponse(
         status_code=201,
         content={
+            **stored,
             "message": "File received. AI analysis is not implemented yet (Step 2).",
-            "filename": safe_name,
-            "size_bytes": len(content),
             "ai_status": "not_implemented",
             "detections": None,  # explicitly null — no fake results
         },
