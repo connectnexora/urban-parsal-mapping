@@ -1,20 +1,13 @@
-<<<<<<< HEAD
-import { useEffect, useState } from 'react';
-import { API_BASE, checkHealth, uploadImage, detectBuildings, getModelStatus } from '../services/api.js';
-
-export default function UploadPanel({
-  backendStatus,
-  setBackendStatus,
-  setHealthData,
-  setDetection,
-  setDetectionError,
-  setOriginalPreview,
-  isDetecting,
-  setIsDetecting,
-}) {
-=======
 import { useEffect, useRef, useState } from 'react';
-import { API_BASE, checkHealth, uploadImage } from '../services/api.js';
+import {
+  API_BASE,
+  checkHealth,
+  uploadImage,
+  detectBuildings,
+  extractParcels,
+  getModelStatus,
+  getParcelStatus,
+} from '../services/api.js';
 
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
 // Browsers can render these directly; TIFF gets a file card instead.
@@ -36,7 +29,7 @@ export function formatBytes(n) {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-/** Client-side validation. Returns an error string, or null when the file is acceptable. */
+/** Client-side validation. Returns an error string, or null when acceptable. */
 function validateFile(f) {
   const ext = extOf(f.name);
   if (!ext || !ALLOWED_EXT.includes(ext)) {
@@ -54,40 +47,58 @@ function validateFile(f) {
   return null;
 }
 
-export default function UploadPanel({ backendStatus, setBackendStatus, setHealthData }) {
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
+export default function UploadPanel({
+  backendStatus,
+  setBackendStatus,
+  setHealthData,
+  setDetection,
+  setDetectionError,
+  setOriginalPreview,
+  isDetecting,
+  setIsDetecting,
+  setParcelResult,
+  setParcelError,
+  isExtracting,
+  setIsExtracting,
+}) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [localDims, setLocalDims] = useState(null);
   const [fileError, setFileError] = useState('');
   const [progress, setProgress] = useState(null);
   const [busy, setBusy] = useState(false);
-<<<<<<< HEAD
+  const [message, setMessage] = useState('');
+  const [messageOk, setMessageOk] = useState(false);
+  const [uploaded, setUploaded] = useState(null);
+  const [processMsg, setProcessMsg] = useState('');
   const [modelStatus, setModelStatus] = useState(null);
+  const [parcelStatus, setParcelStatus] = useState(null);
   const [confidence, setConfidence] = useState(0.25);
+  const [gsd, setGsd] = useState(0.1);
+  const urlRef = useRef(null);
 
-  const refreshModelStatus = async () => {
+  useEffect(() => () => {
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+  }, []);
+
+  useEffect(() => {
+    refreshStatuses();
+  }, []);
+
+  const refreshStatuses = async () => {
     try {
       const s = await getModelStatus();
       setModelStatus(s);
     } catch {
       setModelStatus(null);
     }
+    try {
+      const p = await getParcelStatus();
+      setParcelStatus(p);
+    } catch {
+      setParcelStatus(null);
+    }
   };
-
-  useEffect(() => {
-    refreshModelStatus();
-  }, []);
-=======
-  const [message, setMessage] = useState('');
-  const [messageOk, setMessageOk] = useState(false);
-  const [uploaded, setUploaded] = useState(null);
-  const [processMsg, setProcessMsg] = useState('');
-  const urlRef = useRef(null);
-
-  useEffect(() => () => {
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-  }, []);
 
   const clearPreview = () => {
     if (urlRef.current) {
@@ -96,25 +107,18 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
     }
     setPreview(null);
   };
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!f) return;
-<<<<<<< HEAD
-    setFile(f);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
-    setOriginalPreview(url);
-    setMessage('');
-    setDetectionError(null);
-=======
     clearPreview();
     setUploaded(null);
     setProcessMsg('');
     setProgress(null);
     setMessage('');
+    setDetectionError?.(null);
+    setParcelError?.(null);
 
     const err = validateFile(f);
     if (err) {
@@ -130,6 +134,7 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
       const url = URL.createObjectURL(f);
       urlRef.current = url;
       setPreview(url);
+      setOriginalPreview?.(url);
       // Read real pixel dimensions locally — no upload needed.
       const img = new Image();
       img.onload = () => setLocalDims({ w: img.naturalWidth, h: img.naturalHeight });
@@ -143,8 +148,8 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
     } else {
       // GeoTIFF: browsers can't render .tif — dimensions arrive with the server response.
       setLocalDims(null);
+      setOriginalPreview?.(null);
     }
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
   };
 
   const testConnection = async () => {
@@ -155,13 +160,9 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
       const data = await checkHealth();
       setBackendStatus('ok');
       setHealthData(data);
-<<<<<<< HEAD
-      setMessage(`✅ Backend responded: ${data.status} (${data.service})`);
-      await refreshModelStatus();
-=======
       setMessage(`Backend responded: ${data.status} (${data.service})`);
       setMessageOk(true);
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
+      await refreshStatuses();
     } catch (err) {
       setBackendStatus('down');
       setMessage(`Cannot reach backend at ${API_BASE}. Is uvicorn running?`);
@@ -199,37 +200,44 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
     }
   };
 
-<<<<<<< HEAD
+  const onProcess = () => {
+    if (!uploaded) return;
+    setProcessMsg(
+      `"${uploaded.filename}" queued for AI analysis. ` +
+      'Run Detect Buildings or Extract Parcels below for real inference.',
+    );
+  };
+
   const onDetect = async () => {
-    if (!file || isDetecting) return;
+    if (!file || isDetecting || !setDetection) return;
     setIsDetecting(true);
-    setDetectionError(null);
-    setMessage('🤖 Running YOLO building detection… (first run may take a while)');
+    setDetectionError?.(null);
+    setMessage('Running YOLO building detection… (first run may take a while)');
+    setMessageOk(false);
     try {
       const res = await detectBuildings(file, { confidence });
       setDetection(res);
       setBackendStatus('ok');
       const n = res.building_count ?? res.detections?.length ?? 0;
-      setMessage(
-        `✅ Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`
-      );
-      await refreshModelStatus();
+      setMessage(`Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`);
+      setMessageOk(true);
+      await refreshStatuses();
     } catch (err) {
       const status = err.response?.status;
       const detail = err.response?.data?.detail;
       const help = typeof detail === 'object' ? detail?.help || detail?.message : detail;
       if (status === 503) {
         const msg =
-          `⚠️ Model unavailable (HTTP 503). ` +
+          `Model unavailable (HTTP 503). ` +
           (help || err.message) +
           ` See models/README.md — place a building-trained YOLO weight in models/ and restart the backend.`;
         setDetection(null);
-        setDetectionError(msg);
+        setDetectionError?.(msg);
         setMessage(msg);
       } else {
-        const msg = `❌ Detection failed: ${help || err.message}`;
+        const msg = `Detection failed: ${help || err.message}`;
         setDetection(null);
-        setDetectionError(msg);
+        setDetectionError?.(msg);
         setMessage(msg);
       }
     } finally {
@@ -237,19 +245,29 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
     }
   };
 
-  const modelBadge = !modelStatus
-    ? 'Model status: unknown — press Test Backend Connection'
-    : modelStatus.loaded
-      ? `Model: ${modelStatus.model_name} (${modelStatus.model_type}) · buildings: ${modelStatus.supports_buildings ? 'yes' : 'no (generic COCO fallback)'}`
-      : `Model: NOT LOADED — ${modelStatus.error || 'see models/README.md'}`;
-=======
-  const onProcess = () => {
-    if (!uploaded) return;
-    // No AI call here by design — detection lands in Step 2.
-    setProcessMsg(
-      `"${uploaded.filename}" queued for AI analysis. ` +
-      'AI detection is not implemented yet (Step 2) — no inference was run.'
-    );
+  const onExtractParcels = async () => {
+    if (!file || isExtracting || !setParcelResult) return;
+    setIsExtracting(true);
+    setParcelError?.(null);
+    setMessage('Extracting approximate parcel polygons… (preprocessing → segmentation → contours)');
+    setMessageOk(false);
+    try {
+      const res = await extractParcels(file, { gsd, epsilon: 0.012, conf: confidence });
+      setParcelResult(res);
+      setBackendStatus('ok');
+      setMessage(`Extracted ${res.parcel_count} approximate parcel(s) via ${res.method}. Annotated: ${res.annotated_image}`);
+      setMessageOk(true);
+      await refreshStatuses();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const help = typeof detail === 'object' ? detail?.help || detail?.message : detail;
+      const msg = `Parcel extraction failed: ${help || err.message}`;
+      setParcelResult(null);
+      setParcelError?.(msg);
+      setMessage(msg);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const dimsLabel = localDims
@@ -259,18 +277,31 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
       : extOf(file?.name || '') === '.tif' || extOf(file?.name || '') === '.tiff'
         ? 'TIFF — dimensions available after upload'
         : '—';
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
+
+  const modelBadge = !modelStatus
+    ? 'YOLO status: unknown — press Test Backend Connection'
+    : modelStatus.loaded
+      ? `YOLO: ${modelStatus.model_name} (${modelStatus.model_type}) · buildings: ${modelStatus.supports_buildings ? 'yes' : 'no (generic COCO fallback)'}`
+      : `YOLO: NOT LOADED — ${modelStatus.error || 'see models/README.md'}`;
+
+  const parcelBadge = !parcelStatus
+    ? 'Parcel status: unknown'
+    : parcelStatus.ready
+      ? `Parcels: ready (${parcelStatus.yolo_seg_available ? 'YOLO-seg masks' : 'classical watershed/contours'})`
+      : `Parcels: NOT READY — ${parcelStatus.error || 'install backend requirements'}`;
+
+  const aiBusy = busy || isDetecting || isExtracting;
 
   return (
     <section className="card">
-      <h2>1 · Upload &amp; AI Detection</h2>
-      <p className="sub">Upload a drone/aerial image, then run real YOLO inference. No fake boxes.</p>
+      <h2>1 · Upload &amp; AI Analysis</h2>
+      <p className="sub">Upload a drone/aerial image, then run real inference. No fake results.</p>
 
       <ol className="steps">
         <li className="done">✓ Project structure ready</li>
         <li className="done">✓ Backend connectivity</li>
-        <li className="active">→ POST /detect/buildings (live YOLO)</li>
-        <li>○ Boundaries → Area → Map → Report</li>
+        <li className="active">→ Buildings (YOLO) + Parcels (polygons)</li>
+        <li>○ Report</li>
       </ol>
 
       <label className="drop">
@@ -317,23 +348,33 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
         />
       </label>
 
+      <label className="conf-row">
+        <span title="Meters per pixel for area estimates">GSD (m/px): {Number(gsd).toFixed(3)}</span>
+        <input
+          type="range"
+          min="0.02"
+          max="1"
+          step="0.01"
+          value={gsd}
+          onChange={(e) => setGsd(parseFloat(e.target.value))}
+        />
+      </label>
+
       <div style={{ height: 10 }} />
 
-<<<<<<< HEAD
-      <button className="btn" onClick={onUpload} disabled={!file || busy || isDetecting}>
-        {busy ? 'Working…' : 'Upload to Backend'}
-=======
       <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy}>
         {busy ? 'Uploading…' : 'Upload to Backend'}
       </button>
       <button className="btn process" onClick={onProcess} disabled={!uploaded || busy}>
         Process Image
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
       </button>
-      <button className="btn detect" onClick={onDetect} disabled={!file || busy || isDetecting}>
-        {isDetecting ? 'Detecting buildings……' : '🤖 Detect Buildings (AI)'}
+      <button className="btn detect" onClick={onDetect} disabled={!file || !!fileError || aiBusy}>
+        {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
       </button>
-      <button className="btn ghost" onClick={testConnection} disabled={busy || isDetecting}>
+      <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || aiBusy}>
+        {isExtracting ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
+      </button>
+      <button className="btn ghost" onClick={testConnection} disabled={aiBusy}>
         Test Backend Connection
       </button>
 
@@ -350,6 +391,7 @@ export default function UploadPanel({ backendStatus, setBackendStatus, setHealth
       {message && <p className={messageOk ? 'mono ok-text' : 'mono'} style={{ marginTop: 12 }}>{message}</p>}
       <p className="mono">API: {API_BASE}</p>
       <p className="mono">{modelBadge}</p>
+      <p className="mono">{parcelBadge}</p>
     </section>
   );
 }

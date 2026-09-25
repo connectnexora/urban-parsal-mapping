@@ -42,6 +42,24 @@ $env:YOLO_MODEL_PATH="models/building_yolov8n.pt"
 uvicorn main:app --reload --port 8000
 ```
 
+## Segmentation weights (parcels)
+
+`POST /detect/parcels` prefers learned masks when available, else uses an
+OpenCV watershed/contour fallback (always labelled approximate):
+
+- `*-seg.pt` / `*-seg.onnx` — YOLO-seg models run via `ultralytics`
+  (e.g. `yolov8n-seg.pt` for smoke-testing, or a custom parcel/footprint
+  model trained on SpaceNet / OpenCities AI / INRIA / CrowdAI). Masks are
+  converted to simplified polygons.
+- `*unet*.pt` / `*unet*.onnx` — U-Net weights (need `torch` +
+  `segmentation-models-pytorch`; the backend detects the file and tells you
+  if the runtime is missing instead of faking results).
+- `*sam*.pth` / `*sam*.pt` — SAM/SAM2 weights (need `torch` +
+  `segment-anything` / `sam2`); likewise detected and reported.
+
+Without any of these, the classical fallback runs and `method` in the
+response reads `classical-watershed-contours`.
+
 ## Notes
 
 - Large `*.pt / *.onnx / *.pth / *.bin` files are git-ignored — download or

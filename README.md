@@ -1,106 +1,61 @@
-<<<<<<< HEAD
-# Urban Parcel Mapping — GIS/AI Dashboard
-
-Professional GIS/AI dashboard for drone-based parcel, building, and road detection.
-
-## Features
-
-- **Header** — project branding, AI status indicator (Standby / Processing / Ready), system status, live clock
-- **Left sidebar** — Upload Drone Image, Process Image, Parcel / Building / Road detection layer toggles, Reports
-- **Interactive map** — pan (drag), zoom (wheel + buttons + reset), 3 local basemaps (Satellite / Streets / Dark),
-  parcel polygons (click to inspect), building footprints, road centerlines, coordinate readout, scale bar
-- **Right panel** — parcel/building counts, estimated total area (shoelace, 1 unit = 0.5 m), processing status,
-  AI confidence bar, selected-parcel details, legend
-- **Bottom section** — animated processing progress + auto-scrolling detection logs, local GeoJSON export
-- **Reports** — summary modal with parcel table, CSV / GeoJSON download (browser-generated), print stylesheet
-- **100% local** — no external tile servers, fonts, APIs, or network calls. Fully functional offline;
-  the detection pipeline is simulated in-browser (`src/hooks/useProcessing.js`) with the same state
-  contract a real model backend will use.
-
-## Getting started
-
-```bash
-npm install
-npm run dev      # local dev server (default http://localhost:5173)
-npm run build    # production build -> dist/
-npm run preview  # serve the production build
-```
-=======
 # AI-Based Automated Urban Parcel Mapping and Cadastral Feature Extraction
 
-Hackathon prototype: **Drone/Aerial Image → Upload → AI Analysis → Buildings/Roads/Parcels → Boundaries → Area → Interactive Map → Parcel Report**.
+Hackathon prototype: **Drone/Aerial Image → Upload → AI Analysis → Buildings + Approximate Parcels → Boundaries → Area → Interactive Map → Report**.
 
-> **Step 1 status:** project structure + basic frontend/backend connection only.
-> No AI inference, no fake results. Counters stay blank until Step 2 wires up real detection.
+> AI Went live: YOLO building detection (`POST /detect/buildings`) and
+> approximate parcel polygons (`POST /detect/parcels`) run real inference.
+> Parcel boundaries are **AI-estimated/approximate — NOT legally valid
+> cadastral boundaries**.
 
 ## Tech stack
 
-| Layer    | Choice                          |
-| -------- | ------------------------------- |
-| Frontend | React (Vite) + Leaflet          |
-| Backend  | Python + FastAPI                |
-| AI (Step 2) | OpenCV + YOLO + segmentation |
->>>>>>> 3bb33563eae14bc9c26ad0c1b33fe212027912d5
+| Layer    | Choice                                              |
+| -------- | --------------------------------------------------- |
+| Frontend | React (Vite) + Leaflet                              |
+| Backend  | Python + FastAPI                                    |
+| AI       | Ultralytics YOLO (+YOLO-seg when available), OpenCV watershed/contour fallback |
 
 ## Project structure
 
 ```
-<<<<<<< HEAD
-src/
-  App.jsx                 # dashboard shell + state wiring
-  main.jsx                # entry point
-  index.css               # theme, layout, responsive breakpoints
-  data/sampleData.js      # local survey extent (parcels, buildings, roads)
-  utils/geo.js            # area / centroid / formatting helpers
-  utils/export.js         # local CSV + GeoJSON download (Blob, no network)
-  hooks/useProcessing.js  # simulated AI pipeline (timers only)
-  components/
-    Header.jsx  Sidebar.jsx  MapView.jsx  InfoPanel.jsx
-    BottomPanel.jsx  ReportsModal.jsx  StatCard.jsx
-```
-
-## Connecting a real model later
-
-Replace the timer script inside `useProcessing.start()` with model inference calls.
-Keep the returned shape (`phase`, `progress`, `stageLabel`, `logs`, `revealed`, `confidence`)
-and every component continues to work unchanged.
-=======
 urban-parsal-mapping/
-├── frontend/               # React + Vite + Leaflet demo UI
+├── frontend/               # React + Vite + Leaflet UI
 │   ├── index.html
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── .env.example
 │   └── src/
 │       ├── main.jsx        # entry, Leaflet CSS import
-│       ├── App.jsx         # 3-column layout
+│       ├── App.jsx         # 3-column layout + detection/parcel state
 │       ├── index.css / App.css
 │       ├── components/
-│       │   ├── Navbar.jsx       # title bar + backend badge
-│       │   ├── UploadPanel.jsx  # file pick, upload, test-connection
-│       │   ├── MapView.jsx      # Leaflet map shell (Bengaluru default)
-│       │   └── ResultsPanel.jsx # blank counters until Step 2
+│       │   ├── Navbar.jsx
+│       │   ├── UploadPanel.jsx  # file pick, upload, detect, extract parcels
+│       │   ├── MapView.jsx      # Leaflet map + schematic parcel polygons
+│       │   ├── ResultsPanel.jsx # live counters (blank until inference)
+│       │   ├── DetectionResults.jsx
+│       │   └── ParcelResults.jsx  # approximate parcels + disclaimer
 │       └── services/api.js # axios client → FastAPI
-├── backend/                # FastAPI connectivity API (no AI yet)
-│   ├── main.py             # /, /api/health, /api/info, /api/upload
+├── backend/                # FastAPI AI API
+│   ├── main.py             # /, /api/health, /api/info, /upload, /detect/*
 │   ├── requirements.txt
-│   ├── services/detection.py  # STUB — raises NotImplementedError
-│   └── utils/geo.py           # STUB — area/geo helpers for later
-├── models/                 # YOLO weights go here in Step 2 (git-ignored)
+│   ├── services/detection.py  # YOLO building detection (safe load)
+│   ├── services/parcels.py    # parcel pipeline (segmentation → polygons)
+│   └── utils/geo.py           # pixel→metric estimates, GeoJSON helpers
+├── models/                 # weights go here (git-ignored, see models/README.md)
 ├── data/
-│   ├── uploads/            # files saved by POST /api/upload (git-ignored)
+│   ├── uploads/            # files saved by POST /upload (git-ignored)
 │   └── samples/            # put demo drone images here
-├── outputs/
-│   ├── reports/            # parcel/property reports (Step 3+)
-│   └── maps/               # annotated overlays / GeoJSON (Step 2+)
+├── outputs/                # annotated images + GeoJSON (git-ignored, served at /outputs/*)
+│   ├── reports/
+│   └── maps/
 └── README.md
 ```
 
 ## Prerequisites
 
-- **Node.js 18+** (you have it — verified `node v24`, `npm 12`)
-- **Python 3.10+** — ⚠️ not found on this machine yet (only a Store stub).
-  Install from [python.org](https://www.python.org/downloads/) and tick
+- **Node.js 18+**
+- **Python 3.10+** — install from [python.org](https://www.python.org/downloads/) and tick
   **"Add python.exe to PATH"**, then reopen the terminal.
 
 ## 1 · Start the backend
@@ -134,28 +89,31 @@ Open the printed URL (default http://localhost:5173).
 > Note: on this machine `npm` must be invoked as `npm.cmd` (PowerShell
 > execution policy blocks `npm.ps1`).
 
-## 3 · Test frontend ↔ backend communication
+## 3 · Test the pipeline
 
 1. Start both servers (backend `:8000`, frontend `:5173`).
 2. In the UI, left panel → **"Test Backend Connection"**.
-   - ✅ Success: `Backend responded: ok` + green badge in the navbar.
-   - ❌ Failure: red badge — backend isn't running or wrong `VITE_API_URL`.
-3. Or bypass the UI:
-   - `curl http://localhost:8000/api/health`
-   - Frontend `API: http://localhost:8000` label shows which backend it targets.
-4. Upload test: choose any JPG/PNG/TIF → panel validates type + size,
-   shows preview (JPG/PNG), file name, dimensions and size, then
-   **Upload to Backend** (with live progress bar) →
-   backend validates, saves under `data/uploads/` and replies
-   `filename, width, height, size_bytes, status: "uploaded"`.
-   **Process Image** then queues the file and honestly reports
-   `"AI analysis is not implemented yet"` with `detections: null`
-   (deliberately no fake boxes, no inference runs).
+3. Upload a JPG/PNG/TIF → **Upload to Backend** (live progress, server-validated
+   dimensions).
+4. **Detect Buildings (YOLO)** → `POST /detect/buildings` returns
+   `detections:[{class, confidence, bbox}]` + annotated image in `outputs/`.
+   Without a building-trained weight in `models/`, the generic COCO fallback
+   returns real (non-building) labels + a 503-safe warning — never fake boxes.
+5. **Extract Parcels (polygons)** → `POST /detect/parcels` runs
+   preprocessing → segmentation (YOLO-seg `*-seg.pt` when present, else OpenCV
+   watershed/contours) → boundary extraction → `approxPolyDP` simplification →
+   area/perimeter estimates via GSD. Returns
+   `parcels:[{parcel_id, area, perimeter, confidence, polygon}]` plus annotated
+   image + GeoJSON in `outputs/`, overlaid as schematic polygons on the map.
+   Everywhere labelled **AI-estimated/approximate, NOT legal cadastre**.
 
-## What's next (Step 2)
+## Segmentation models
 
-- Load YOLO weights from `models/` in `backend/services/detection.py`
-- OpenCV segmentation → boundaries → `utils/geo.py` area calc
-- Return real GeoJSON detections; overlay polygons in `MapView.jsx`
-- Generate parcel report into `outputs/reports/`
->>>>>>> 3bb33563eae14bc9c26ad0c1b33fe212027912d5
+- Preferred when present: `models/*-seg.pt` (YOLO-seg, e.g. custom
+  parcel/footprint model trained on SpaceNet / OpenCities AI / INRIA / CrowdAI).
+- Detected + reported: `*unet*`, `*sam*` weights (need torch +
+  segmentation-models-pytorch / segment-anything — otherwise the service says
+  so and uses the classical fallback).
+- Fallback (always available): OpenCV bilateral + CLAHE → Otsu/adaptive →
+  morphology → distance-transform watershed → contour polygons.
+- See `models/README.md` for the full weight guide.

@@ -16,6 +16,12 @@ const detectClient = axios.create({
   timeout: 180000,
 });
 
+// Parcel extraction can take a while on large drone frames.
+const parcelClient = axios.create({
+  baseURL: API_BASE,
+  timeout: 240000,
+});
+
 export async function checkHealth() {
   const res = await client.get('/api/health');
   return res.data;
@@ -26,16 +32,17 @@ export async function getInfo() {
   return res.data;
 }
 
-<<<<<<< HEAD
 export async function getModelStatus() {
   const res = await client.get('/detect/model-status');
   return res.data;
 }
 
-export async function uploadImage(file) {
-=======
+export async function getParcelStatus() {
+  const res = await client.get('/detect/parcel-status');
+  return res.data;
+}
+
 export async function uploadImage(file, onProgress) {
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
   const form = new FormData();
   // Third arg preserves the original filename in the multipart payload.
   form.append('file', file, file.name);
@@ -62,9 +69,30 @@ export async function uploadImage(file, onProgress) {
  */
 export async function detectBuildings(file, { confidence = 0.25, iou = 0.45 } = {}) {
   const form = new FormData();
-  form.append('file', file);
+  form.append('file', file, file.name);
   const res = await detectClient.post('/detect/buildings', form, {
     params: { confidence, iou },
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+/**
+ * Extract approximate parcel polygons.
+ * POST /detect/parcels with multipart `file` (+ `gsd`, `epsilon`, `conf`,
+ * `max_parcels`). Returns:
+ * { parcels:[{parcel_id, area, perimeter, confidence, polygon}],
+ *   parcel_count, annotated_image, geojson_file, disclaimer, ... }
+ * Areas are AI-estimated via GSD — NOT legal cadastre.
+ */
+export async function extractParcels(
+  file,
+  { gsd = 0.1, epsilon = 0.012, conf = 0.25, maxParcels = 60 } = {},
+) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const res = await parcelClient.post('/detect/parcels', form, {
+    params: { gsd, epsilon, conf, max_parcels: maxParcels },
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
