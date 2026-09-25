@@ -8,6 +8,7 @@ import ParcelResults from './components/ParcelResults.jsx';
 import ParcelDetail from './components/ParcelDetail.jsx';
 import SummaryStats from './components/SummaryStats.jsx';
 import ReportModal from './components/ReportModal.jsx';
+import CompareView from './components/CompareView.jsx';
 import './App.css';
 
 export default function App() {
@@ -108,6 +109,12 @@ export default function App() {
         parcelResult={parcelResult}
         detection={detection}
         featureResult={features}
+      />
+      <CompareView
+        detection={detection}
+        features={features}
+        parcelResult={parcelResult}
+        originalPreview={originalPreview}
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>

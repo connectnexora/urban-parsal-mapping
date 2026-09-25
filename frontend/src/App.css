@@ -123,6 +123,61 @@
 .report-figure figcaption { margin-top: 6px; }
 .report-disclaimer { margin-top: 16px; }
 
+/* ---- Visual comparison slider ---- */
+.badge-tab {
+  cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4);
+  color: var(--text); font-family: inherit;
+}
+.badge-tab.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #06121f; border-color: transparent;
+}
+.compare-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.compare-track {
+  position: relative; margin-top: 12px; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--card-border); background: #060b16;
+  cursor: ew-resize; user-select: none; touch-action: none;
+  aspect-ratio: 16 / 9; max-height: 560px;
+}
+.compare-img {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+  background: #060b16; pointer-events: none;
+}
+.compare-right { position: absolute; inset: 0; }
+.compare-left-wrap { position: absolute; inset: 0; }
+.compare-left-wrap .compare-img { height: 100%; }
+.compare-divider {
+  position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
+  background: #fff; opacity: 0.9; pointer-events: none;
+}
+.compare-handle {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 40px; border-radius: 50%;
+  background: #fff; color: #06121f; font-size: 16px; font-weight: 700;
+  display: grid; place-items: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+.compare-tag {
+  position: absolute; top: 10px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.6px; padding: 5px 10px; border-radius: 999px;
+  background: rgba(6, 18, 31, 0.82); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25); pointer-events: none;
+}
+.compare-tag-left { left: 10px; }
+.compare-tag-right { right: 10px; }
+.compare-range { width: 100%; margin-top: 10px; accent-color: var(--accent); }
+.compare-legend {
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+  margin-top: 10px; font-size: 12px; color: var(--muted);
+}
+.compare-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.compare-single { margin: 12px 0 0; }
+.compare-single img {
+  width: 100%; border-radius: 12px; border: 1px solid var(--card-border);
+  max-height: 520px; object-fit: contain; background: #060b16;
+}
+.compare-single figcaption { margin-top: 6px; }
+
 @media print {
   body.report-open .app,
   body.report-open .footer { display: none !important; }
