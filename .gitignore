@@ -1,6 +1,51 @@
+<<<<<<< HEAD
 node_modules/
 dist/
 dist-ssr/
 *.local
 .DS_Store
 Thumbs.db
+=======
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Python
+backend/__pycache__/
+backend/*.pyc
+backend/.venv/
+backend/venv/
+*.egg-info/
+.pytest_cache/
+
+# Models (large weights - don't commit, download separately)
+models/*.pt
+models/*.onnx
+models/*.pth
+models/*.bin
+!models/README.md
+!models/.gitkeep
+
+# Data (user uploads + large imagery)
+data/uploads/*
+!data/uploads/.gitkeep
+data/samples/*.tif
+data/samples/*.tiff
+data/samples/*.jpg
+data/samples/*.png
+!data/samples/.gitkeep
+
+# Outputs
+outputs/reports/*
+!outputs/reports/.gitkeep
+outputs/maps/*
+!outputs/maps/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+.env
+>>>>>>> 3bb33563eae14bc9c26ad0c1b33fe212027912d5
