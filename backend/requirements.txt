@@ -4,6 +4,9 @@ python-multipart==0.0.12
 aiofiles==23.2.1
 numpy==1.26.4
 opencv-python==4.10.0.84
+# NOTE: ultralytics pulls torch transitively (~2 GB, unpinned upstream).
+# On GPU-less servers prefer opencv-python-headless over opencv-python
+# to avoid system libGL dependencies.
 ultralytics==8.2.0
 shapely==2.0.5
 pillow==10.4.0

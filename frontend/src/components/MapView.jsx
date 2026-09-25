@@ -1,11 +1,25 @@
-import { MapContainer, TileLayer, Marker, Popup, ImageOverlay, Rectangle, Polygon, Tooltip, LayersControl, useMap } from 'react-leaflet';
+import {
+  MapContainer, TileLayer, Marker, Popup, ImageOverlay, Rectangle, Polygon,
+  LayersControl, GeoJSON, ScaleControl, ZoomControl, useMap,
+} from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 // Fix default marker icons under Vite (Leaflet images aren't bundled by default).
 import marker2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+import {
+  CENTER,
+  imageFrame,
+  pxToLatLng,
+  buildingCoverage,
+  parcelsToGeoJSON,
+  detectionsToGeoJSON,
+  featureItemsToGeoJSON,
+  changesToGeoJSON,
+} from '../utils/mapGeo.js';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -14,12 +28,9 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-// Default view: Bengaluru, India. Judges can pan/zoom anywhere.
-const CENTER = [12.9716, 77.5946];
+const PARCEL_PALETTE = ['#38bdf8', '#34d399', '#a78bfa', '#fbbf24', '#f87171', '#22d3ee'];
 
-const PALETTE = ['#38bdf8', '#34d399', '#a78bfa', '#fbbf24', '#f87171', '#22d3ee'];
-
-const DEFAULT_COLORS = {
+const FEATURE_COLORS = {
   buildings: '#22c55e',
   roads: '#f97316',
   vegetation: '#16a34a',
@@ -28,67 +39,31 @@ const DEFAULT_COLORS = {
   parcels: '#eab308',
 };
 
-// Layer order + labels for the control.
-const LAYER_DEFS = [
+const FEATURE_LAYER_DEFS = [
   { key: 'buildings', label: 'Buildings' },
   { key: 'roads', label: 'Roads' },
-  { key: 'parcels', label: 'Parcels (approx)' },
   { key: 'vegetation', label: 'Vegetation' },
   { key: 'water', label: 'Water' },
   { key: 'other', label: 'Other features' },
 ];
 
+const CHANGE_STATUSES = ['NEW', 'REMOVED', 'CHANGED', 'UNCHANGED'];
+const CHANGE_COLORS_DEFAULT = {
+  NEW: '#2ecc71',
+  REMOVED: '#f87171',
+  CHANGED: '#fbbf24',
+  UNCHANGED: '#a0a0a0',
+};
+
 const MAX_SHAPES_PER_LAYER = 150;
 
-/**
- * Parcel polygons arrive in IMAGE-PIXEL coordinates, not geo coordinates.
- * They are rendered as a clearly-labelled SCHEMATIC overlay fitted around
- * the map centre (aspect preserved) so judges can inspect shapes/areas.
- * The annotated image (true pixel geometry) is shown in ParcelResults.
- */
-function parcelsToLatLngs(parcelResult) {
-  const parcels = parcelResult?.parcels || [];
-  if (!parcels.length || !parcelResult?.image_width || !parcelResult?.image_height) {
-    return [];
-  }
-  const W = parcelResult.image_width;
-  const H = parcelResult.image_height;
-  // Schematic extent ~0.02 deg; preserves image aspect ratio.
-  const extent = 0.02;
-  return parcels.map((p, i) => {
-    const positions = (p.polygon || []).map(([x, y]) => [
-      CENTER[0] + (0.5 - y / H) * extent,
-      CENTER[1] + ((x / W) - 0.5) * extent,
-    ]);
-    return {
-      parcel: p,
-      color: PALETTE[i % PALETTE.length],
-      positions,
-    };
-  }).filter((r) => r.positions.length >= 3);
-}
-
-/** Frame placement for the feature overlay: drape the uploaded frame around the map centre. */
-function overlayBounds(dims) {
-  const dLat = 0.06;
-  const dLng = dLat * (dims.w / dims.h);
-  return [
-    [CENTER[0] - dLat / 2, CENTER[1] - dLng / 2],
-    [CENTER[0] + dLat / 2, CENTER[1] + dLng / 2],
-  ];
-}
-
-/** Pixel [x, y] (origin top-left) -> [lat, lng] inside the overlay bounds. */
-function pxToLatLng(x, y, dims, bounds) {
-  const [[s, w], [n, e]] = bounds;
-  return [n - (y / dims.h) * (n - s), w + (x / dims.w) * (e - w)];
-}
-
-function FitToOverlay({ bounds, active }) {
+function FitToResults({ bounds, fitKey }) {
   const map = useMap();
-  const key = active ? bounds.flat().join(',') : 'off';
+  const key = bounds ? bounds.toBBoxString() + '|' + fitKey : 'off|' + fitKey;
   useEffect(() => {
-    if (active) map.fitBounds(bounds, { padding: [24, 24] });
+    if (bounds && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [28, 28] });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return null;
@@ -134,123 +109,351 @@ function LayerShapes({ items, color, dims, bounds }) {
   );
 }
 
-export default function MapView({ parcelResult, featureResult, overlayUrl }) {
+export default function MapView({
+  parcelResult,
+  detection,
+  featureResult,
+  overlayUrl,
+  selectedParcelId,
+  onSelectParcel,
+  changeResult,
+}) {
+  const [fitKey, setFitKey] = useState(0);
+
   useEffect(() => {
     // Ensure the Leaflet map sizes correctly after first paint.
     const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
     return () => clearTimeout(t);
   }, []);
 
-  const parcelOverlays = useMemo(() => parcelsToLatLngs(parcelResult), [parcelResult]);
-  const hasParcels = parcelOverlays.length > 0;
+  const parcels = parcelResult?.parcels || [];
+  const changes = changeResult?.changes || [];
+  const changeColors = { ...CHANGE_COLORS_DEFAULT, ...(changeResult?.change_colors || {}) };
+  const dims = useMemo(() => {
+    // Change overlays live in Image-A pixel space; prefer those dims when a
+    // change result exists so change geometry aligns with the frame.
+    const w = changeResult?.image_a?.width || parcelResult?.image_width
+      || featureResult?.image_width || detection?.image_width;
+    const h = changeResult?.image_a?.height || parcelResult?.image_height
+      || featureResult?.image_height || detection?.image_height;
+    return w && h ? { w, h } : null;
+  }, [changeResult, parcelResult, featureResult, detection]);
 
-  const overlay = useMemo(() => {
-    if (!featureResult?.image_width || !featureResult?.image_height || !overlayUrl) return null;
-    const dims = { w: featureResult.image_width, h: featureResult.image_height };
-    return { dims, bounds: overlayBounds(dims) };
-  }, [featureResult, overlayUrl]);
+  const frame = useMemo(() => (dims ? imageFrame(dims) : null), [dims]);
+
+  // Buildings: prefer the feature pipeline's building list when present
+  // (avoids double-drawing the same boxes twice), else YOLO detections.
+  const buildingItems = useMemo(() => {
+    if (featureResult?.features?.buildings?.length) return featureResult.features.buildings;
+    return detection?.detections || [];
+  }, [featureResult, detection]);
+
+  const coverageById = useMemo(
+    () => buildingCoverage(parcelResult?.parcels || [], buildingItems),
+    [parcelResult, buildingItems],
+  );
+
+  const parcelsGeoJSON = useMemo(
+    () => (parcels.length ? parcelsToGeoJSON(parcelResult, coverageById) : null),
+    [parcelResult, parcels.length, coverageById],
+  );
+  const buildingsGeoJSON = useMemo(
+    () => (buildingItems.length ? detectionsToGeoJSON(buildingItems, 'buildings') : null),
+    [buildingItems],
+  );
+  const featureGeoJSON = useMemo(() => {
+    const out = {};
+    for (const { key } of FEATURE_LAYER_DEFS) {
+      if (key === 'buildings') continue; // covered by the buildings layer
+      const items = featureResult?.features?.[key] || [];
+      if (items.length) out[key] = featureItemsToGeoJSON(items, key);
+    }
+    return out;
+  }, [featureResult]);
+
+  const toLatLng = useMemo(() => {
+    if (!dims || !frame) return null;
+    return (coords) => {
+      const [x, y] = coords;
+      const [lat, lng] = pxToLatLng(x, y, dims, frame);
+      return L.latLng(lat, lng);
+    };
+  }, [dims, frame]);
+
+  const changesGeoJSON = useMemo(
+    () => (changes.length ? changesToGeoJSON(changes) : null),
+    [changeResult],
+  );
+
+  // Combined bounds of everything detected (for fit-to-area).
+  const resultsBounds = useMemo(() => {
+    if (!dims || !frame) return null;
+    const pts = [];
+    for (const p of parcels) {
+      for (const [x, y] of p.polygon || []) pts.push(pxToLatLng(x, y, dims, frame));
+    }
+    for (const b of buildingItems) {
+      if (!b?.bbox) continue;
+      const [x1, y1, x2, y2] = b.bbox;
+      pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+    }
+    for (const c of changes) {
+      if (!c?.bbox) continue;
+      const [x1, y1, x2, y2] = c.bbox;
+      pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+    }
+    for (const { key } of FEATURE_LAYER_DEFS) {
+      for (const it of featureResult?.features?.[key] || []) {
+        if (it?.bbox) {
+          const [x1, y1, x2, y2] = it.bbox;
+          pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+        }
+      }
+    }
+    if (!pts.length) return null;
+    // pts are [lat, lng] pairs already.
+    return L.latLngBounds(pts.map(([lat, lng]) => [lat, lng]));
+  }, [dims, frame, parcels, buildingItems, changes, featureResult]);
+
+  const onEachParcel = (feature, layer) => {
+    const p = feature.properties || {};
+    layer.bindTooltip(`${p.parcel_id} · ~${p.area_m2_estimated} m² (est.)`, { sticky: true });
+    layer.bindPopup(
+      `<b>${p.parcel_id}</b> (AI-estimated, approximate)` +
+      `<br/>Area: ~${p.area_m2_estimated} m² (~${(Number(p.area_ha_estimated ?? p.area_m2_estimated / 10000)).toFixed(4)} ha)` +
+      `<br/>Perimeter: ~${p.perimeter_m_estimated} m` +
+      `<br/>Buildings: ${p.building_count} · Coverage: ~${p.building_coverage_pct}%` +
+      `<br/>AI confidence: ${p.confidence_approx} (heuristic)`,
+    );
+    layer.on('click', () => onSelectParcel?.(p.parcel_id));
+  };
+
+  const parcelStyle = (feature) => {
+    const idx = parcels.findIndex((p) => p.parcel_id === feature?.properties?.parcel_id);
+    const color = idx < 0
+      ? '#9aa7c2' // unknown id: neutral gray, never impersonates a parcel
+      : PARCEL_PALETTE[idx % PARCEL_PALETTE.length];
+    const selected = feature?.properties?.parcel_id === selectedParcelId;
+    return {
+      color,
+      weight: selected ? 4 : 2,
+      fillColor: color,
+      fillOpacity: selected ? 0.45 : 0.25,
+    };
+  };
+
+  const onEachBuilding = (feature, layer) => {
+    const p = feature.properties || {};
+    layer.bindTooltip(`${p.class} · ${Number(p.confidence).toFixed(2)}`, { sticky: true });
+    layer.bindPopup(
+      `<b>${p.class}</b><br/>conf: ${Number(p.confidence).toFixed(3)}<br/>bbox: [${(p.bbox || []).join(', ')}]`,
+    );
+  };
+
+  const onEachChange = (feature, layer) => {
+    const p = feature.properties || {};
+    layer.bindTooltip(`${p.status} · ${p.changeKind}: ${p.label}`, { sticky: true });
+    layer.bindPopup(
+      `<b>${p.status}</b> — ${p.changeKind}<br/>${p.label}` +
+      `<br/>conf: ${Number(p.confidence).toFixed(3)}` +
+      `<br/>bbox: [${(p.bbox || []).join(', ')}]` +
+      (p.method ? `<br/>method: ${p.method}` : ''),
+    );
+  };
+
+  const changeStyle = (feature) => {
+    const color = changeColors[feature?.properties?.status] || '#ffffff';
+    return { color, weight: 2, fillColor: color, fillOpacity: 0.3 };
+  };
+
+  const onEachFeature = (feature, layer) => {
+    const p = feature.properties || {};
+    layer.bindTooltip(`${p.kind}: ${p.class} · ${Number(p.confidence).toFixed(2)}`, { sticky: true });
+    layer.bindPopup(
+      `<b>${p.class}</b> (${p.kind})<br/>conf: ${Number(p.confidence).toFixed(3)}` +
+      `<br/>bbox: [${(p.bbox || []).join(', ')}]` +
+      (p.method ? `<br/>method: ${p.method}` : ''),
+    );
+  };
 
   const feats = featureResult?.features || {};
   const counts = featureResult?.counts || {};
   const reasons = featureResult?.reasons || {};
-  const colors = { ...DEFAULT_COLORS, ...(featureResult?.feature_colors || {}) };
-  const hasOverlay = overlay != null;
-  const hasLayers = hasParcels || hasOverlay;
+  const colors = { ...FEATURE_COLORS, ...(featureResult?.feature_colors || {}) };
 
-  const parcelCount = parcelResult?.parcel_count ?? parcelOverlays.length;
+  const hasParcels = parcels.length > 0;
+  const hasBuildings = buildingItems.length > 0;
+  const hasFeatures = Object.keys(featureGeoJSON).length > 0;
+  const hasChanges = changes.length > 0;
+  const changeCounts = changeResult?.counts || {};
+  // Feature layers need geometry + frame, NOT the browser preview: TIFFs
+  // have no preview (overlayUrl null) but their vectors still render.
+  const hasVectors = !!(frame && dims && (hasParcels || hasBuildings || hasFeatures || hasChanges));
+  const hasOverlay = !!(frame && overlayUrl && (featureResult || parcelResult || detection));
+  const hasAnything = hasVectors || hasOverlay;
 
-  const sub = hasParcels && hasOverlay
-    ? `Showing ${parcelOverlays.length} AI-estimated parcel polygon(s) + feature layers — schematic overlays, NOT legal cadastre.`
-    : hasParcels
-      ? `Showing ${parcelOverlays.length} AI-estimated parcel polygon(s) — schematic overlay, NOT legal cadastre. Click a polygon for details.`
-      : hasOverlay
-        ? 'Uploaded frame draped at the map centre — toggle feature layers (top-right).'
-        : 'Parcel polygons + feature layers will overlay here after the AI runs.';
+  const shownBits = [
+    hasParcels ? `${parcels.length} parcel(s)` : null,
+    hasBuildings ? `${buildingItems.length} building(s)` : null,
+    hasFeatures ? `${Object.values(featureGeoJSON).reduce((n, g) => n + g.features.length, 0)} other feature(s)` : null,
+    hasChanges ? `${changes.length} change(s)` : null,
+  ].filter(Boolean);
+  const sub = hasAnything
+    ? `Showing ${shownBits.join(' + ')} — schematic overlays, NOT legal cadastre. Click a parcel for details.`
+    : 'Parcel polygons, buildings, roads and other features overlay here after the AI runs.';
 
   return (
     <section className="card map-wrap">
-      <div className="map-head">
-        <h2>2 · Interactive Map</h2>
-        <p className="sub">{sub}</p>
+      <div className="map-head map-head-row">
+        <div>
+          <h2>2 · Interactive Map</h2>
+          <p className="sub">{sub}</p>
+        </div>
+        {resultsBounds && (
+          <button className="btn small" onClick={() => setFitKey((k) => k + 1)}>
+            Fit to detected area
+          </button>
+        )}
       </div>
-      <MapContainer center={CENTER} zoom={hasLayers ? 15 : 14} scrollWheelZoom>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        {!hasLayers && (
-          <Marker position={CENTER}>
-            <Popup>Demo anchor — Bengaluru. Run parcel extraction or feature extraction to see AI overlays.</Popup>
-          </Marker>
-        )}
-        {hasOverlay && (
-          <>
-            <FitToOverlay bounds={overlay.bounds} active />
-            <ImageOverlay url={overlayUrl} bounds={overlay.bounds} opacity={0.95} zIndex={1} />
-          </>
-        )}
-        {hasLayers && (
-          <LayersControl position="topright" collapsed={false}>
-            <LayersControl.Overlay checked name={`Parcels (approx) (${hasParcels ? parcelCount : 0})`}>
-              <>
-                {parcelOverlays.map(({ parcel, color, positions }) => (
-                  <Polygon
-                    key={parcel.parcel_id}
-                    positions={positions}
-                    pathOptions={{ color, weight: 2, fillColor: color, fillOpacity: 0.25 }}
-                  >
-                    <Tooltip sticky>
-                      {parcel.parcel_id} · ~{parcel.area} m² (est.)
-                    </Tooltip>
-                    <Popup>
-                      <b>{parcel.parcel_id}</b> (AI-estimated, approximate)
-                      <br />Area: ~{parcel.area} m² · Perimeter: ~{parcel.perimeter} m
-                      <br />Confidence: {parcel.confidence} (heuristic)
-                      <br />Vertices: {parcel.num_vertices} · {parcel.method}
-                    </Popup>
-                  </Polygon>
-                ))}
-              </>
+      <MapContainer
+        center={CENTER}
+        zoom={hasAnything ? 15 : 14}
+        scrollWheelZoom
+        zoomControl={false}
+      >
+        <ZoomControl position="topleft" />
+        <LayersControl position="topright" collapsed={false}>
+          <LayersControl.BaseLayer checked name="Streets (OSM)">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Satellite (Esri)">
+            <TileLayer
+              attribution='Imagery &copy; <a href="https://www.esri.com/">Esri</a> &amp; contributors'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+          </LayersControl.BaseLayer>
+
+          {hasOverlay && (
+            <LayersControl.Overlay checked name="Uploaded frame">
+              <ImageOverlay url={overlayUrl} bounds={frame} opacity={0.55} zIndex={1} />
             </LayersControl.Overlay>
-            {hasOverlay && ['buildings', 'roads', 'vegetation', 'water', 'other'].map((key) => {
-              const items = feats[key] || [];
-              const n = counts[key] ?? items.length;
-              const label = LAYER_DEFS.find((d) => d.key === key).label;
-              return (
-                <LayersControl.Overlay key={key} checked name={`${label} (${n})`}>
-                  <LayerShapes items={items} color={colors[key]} dims={overlay.dims} bounds={overlay.bounds} />
-                </LayersControl.Overlay>
-              );
-            })}
-          </LayersControl>
-        )}
-      </MapContainer>
-      {hasLayers ? (
-        <div className="layer-caption">
-          {LAYER_DEFS.map(({ key, label }) => {
-            const n = key === 'parcels'
-              ? (hasParcels ? parcelCount : 0)
-              : (hasOverlay ? (counts[key] ?? (feats[key] || []).length) : 0);
-            const note =
-              key === 'parcels'
-                ? (hasParcels ? parcelResult.disclaimer : 'run Extract Parcels for AI-estimated polygons')
-                : (!hasOverlay ? 'run Process Image (AI Features)' : (n === 0 && reasons[key] ? reasons[key] : null));
+          )}
+
+          {parcelsGeoJSON && toLatLng && (
+            <LayersControl.Overlay checked name={`Parcels (approx) (${parcels.length})`}>
+              <GeoJSON
+                key={`parcels-${parcelResult.filename || 'nofile'}-${parcelResult.timestamp || ''}-${parcels.length}-${selectedParcelId || 'none'}`}
+                data={parcelsGeoJSON}
+                coordsToLatLng={toLatLng}
+                style={parcelStyle}
+                onEachFeature={onEachParcel}
+              />
+            </LayersControl.Overlay>
+          )}
+
+          {buildingsGeoJSON && toLatLng && (
+            <LayersControl.Overlay checked name={`Buildings (${buildingItems.length})`}>
+              <GeoJSON
+                key={`bldg-${(detection || featureResult)?.filename || 'nofile'}-${(detection || featureResult)?.timestamp || ''}-${buildingItems.length}`}
+                data={buildingsGeoJSON}
+                coordsToLatLng={toLatLng}
+                style={{ color: colors.buildings, weight: 2, fillOpacity: 0.15 }}
+                onEachFeature={onEachBuilding}
+              />
+            </LayersControl.Overlay>
+          )}
+
+          {hasVectors && ['roads', 'vegetation', 'water', 'other'].map((key) => {
+            const items = feats[key] || [];
+            const n = counts[key] ?? items.length;
             return (
-              <div key={key} className="layer-row" title={note || `${n} ${label.toLowerCase()} shown`}>
-                <span className="legend-dot" style={{ background: colors[key] }} />
-                <span className="layer-name">{label}</span>
-                <span className="mono">{n}</span>
-              </div>
+              <LayersControl.Overlay key={key} checked name={`${key[0].toUpperCase() + key.slice(1)} (${n})`}>
+                <LayerShapes items={items} color={colors[key]} dims={dims} bounds={frame} />
+              </LayersControl.Overlay>
             );
           })}
-          <p className="map-note">
-            ⚠️ Schematic overlays: image-pixel geometry fitted around the centre for inspection — NOT georeferenced
-            survey data and NOT legal cadastre. True geometry is in the annotated images + GeoJSON below.
-          </p>
+
+          {changesGeoJSON && toLatLng && CHANGE_STATUSES.map((st) => {
+            const n = changeCounts[st] ?? changes.filter((c) => c.status === st).length;
+            if (!n) return null;
+            const data = {
+              ...changesGeoJSON,
+              features: changesGeoJSON.features.filter((f) => f.properties?.status === st),
+            };
+            return (
+              <LayersControl.Overlay
+                key={st}
+                checked={st !== 'UNCHANGED'}
+                name={`Changes: ${st} (${n})`}
+              >
+                <GeoJSON
+                  key={`chg-${st}-${changeResult.file_a || 'a'}-${changeResult.file_b || 'b'}-${changeResult.timestamp || ''}-${n}`}
+                  data={data}
+                  coordsToLatLng={toLatLng}
+                  style={changeStyle}
+                  onEachFeature={onEachChange}
+                />
+              </LayersControl.Overlay>
+            );
+          })}
+        </LayersControl>
+
+        {!hasAnything && (
+          <Marker position={CENTER}>
+            <Popup>Demo anchor — Bengaluru. Run parcel extraction, building detection or feature extraction to see AI overlays.</Popup>
+          </Marker>
+        )}
+
+        {resultsBounds && <FitToResults bounds={resultsBounds} fitKey={fitKey} />}
+        <ScaleControl position="bottomleft" />
+      </MapContainer>
+      <div className="layer-caption">
+        <div className="layer-row" title="AI-estimated parcel polygons">
+          <span className="legend-dot" style={{ background: colors.parcels }} />
+          <span className="layer-name">Parcels (approx)</span>
+          <span className="mono">{hasParcels ? parcels.length : 0}</span>
         </div>
-      ) : (
-        <p className="map-note">⚠️ No AI overlays yet — run Detect Buildings, Extract Parcels, or Process Image (AI Features). Parcel boundaries are always AI-estimated/approximate.</p>
-      )}
+        <div className="layer-row" title="YOLO building detections">
+          <span className="legend-dot" style={{ background: colors.buildings }} />
+          <span className="layer-name">Buildings</span>
+          <span className="mono">{buildingItems.length}</span>
+        </div>
+        {['roads', 'vegetation', 'water', 'other'].map((key) => {
+          const n = counts[key] ?? (feats[key] || []).length;
+          const note = !featureResult
+            ? 'run Process Image (AI Features)'
+            : (n === 0 && reasons[key] ? reasons[key] : null);
+          return (
+            <div key={key} className="layer-row" title={note || `${n} ${key} shown`}>
+              <span className="legend-dot" style={{ background: colors[key] }} />
+              <span className="layer-name">{key[0].toUpperCase() + key.slice(1)}</span>
+              <span className="mono">{n}</span>
+            </div>
+          );
+        })}
+        {hasChanges && CHANGE_STATUSES.map((st) => {
+          const n = changeCounts[st] ?? changes.filter((c) => c.status === st).length;
+          if (!n) return null;
+          return (
+            <div key={st} className="layer-row" title={`AI-estimated ${st.toLowerCase()} changes (verify by surveyor)`}>
+              <span className="legend-dot" style={{ background: changeColors[st] }} />
+              <span className="layer-name">Changes: {st}</span>
+              <span className="mono">{n}</span>
+            </div>
+          );
+        })}
+        <p className="map-note">
+          {hasAnything
+            ? '⚠️ Schematic overlays: image-pixel geometry fitted around the centre for inspection — NOT georeferenced survey data and NOT legal cadastre. True geometry is in the annotated images + GeoJSON below. Toggle Streets/Satellite (top-right) and layers as needed.'
+            : '⚠️ No AI overlays yet — run Detect Buildings, Extract Parcels, or Process Image (AI Features). Parcel boundaries are always AI-estimated/approximate.'}
+        </p>
+        {['roads', 'vegetation', 'water', 'other'].some((key) => (feats[key] || []).length > 150) && (
+          <p className="mono">Note: feature layers show the first 150 shapes per category — full lists are in the tables below.</p>
+        )}
+      </div>
     </section>
   );
 }

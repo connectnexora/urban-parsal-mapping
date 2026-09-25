@@ -1,0 +1,269 @@
+// Shared pixel<->map geometry helpers for the AI overlay map.
+//
+// All AI geometry arrives in IMAGE-PIXEL coordinates (origin top-left).
+// The map renders them through ONE shared schematic frame fitted around
+// CENTER so parcels, buildings, roads and other features align with each
+// other. This frame is NOT georeferencing and NOT legal cadastre — it is a
+// hackathon-presentation overlay; true geometry lives in the annotated
+// images + GeoJSON under outputs/.
+
+export const CENTER = [12.9716, 77.5946]; // Bengaluru demo anchor
+
+export const M2_PER_HA = 10000;
+
+/** Square meters -> hectares. */
+export function m2ToHa(m2) {
+  return (Number(m2) || 0) / M2_PER_HA;
+}
+
+/** Parcel area in m², tolerant of old (`area`) and new (`area_m2`) shapes. */
+export function parcelAreaM2(p) {
+  return Number(p?.area_m2 ?? p?.area ?? 0) || 0;
+}
+
+/** Parcel area in hectares. */
+export function parcelAreaHa(p) {
+  if (p?.area_ha != null) return Number(p.area_ha) || 0;
+  return m2ToHa(parcelAreaM2(p));
+}
+
+/** Parcel perimeter in meters, tolerant of old/new shapes. */
+export function parcelPerimeterM(p) {
+  return Number(p?.perimeter_m ?? p?.perimeter ?? 0) || 0;
+}
+
+/**
+ * Combined summary statistics for the parcel information panel.
+ * Buildings come from the caller (YOLO detections preferred, else feature
+ * pipeline buildings). Coverage uses the same honest pixel heuristic as
+ * buildingCoverage(). All areas are labelled by parcelResult.area_source.
+ */
+export function computeSummary(parcelResult, buildings) {
+  const parcels = parcelResult?.parcels || [];
+  const totalParcels = parcels.length;
+  const totalAreaM2 = Math.round(parcels.reduce((s, p) => s + parcelAreaM2(p), 0) * 100) / 100;
+  const totalAreaHa = Math.round(m2ToHa(totalAreaM2) * 10000) / 10000;
+  const averageAreaM2 = totalParcels ? Math.round((totalAreaM2 / totalParcels) * 100) / 100 : 0;
+  const averageAreaHa = totalParcels ? Math.round((totalAreaHa / totalParcels) * 10000) / 10000 : 0;
+  let largestParcel = null;
+  for (const p of parcels) {
+    if (!largestParcel || parcelAreaM2(p) > parcelAreaM2(largestParcel)) largestParcel = p;
+  }
+  const coverageById = buildingCoverage(parcels, buildings || []);
+  const totalBuildings = (buildings || []).length;
+  const avgCoveragePct = totalParcels
+    ? Math.round(
+      (parcels.reduce((s, p) => s + (coverageById[p.parcel_id]?.coveragePct ?? 0), 0) / totalParcels) * 10,
+    ) / 10
+    : 0;
+  return {
+    totalParcels,
+    totalAreaM2,
+    totalAreaHa,
+    averageAreaM2,
+    averageAreaHa,
+    largestParcel,
+    totalBuildings,
+    averageCoveragePct: avgCoveragePct,
+    coverageById,
+    areaSource: parcelResult?.area_source || 'estimated',
+    areaLabel: parcelResult?.area_label || 'Estimated image-based area.',
+  };
+}
+
+/** Frame bounds for an image of {w,h} px, aspect-preserving, ~0.06 deg. */
+export function imageFrame(dims) {
+  const w = Math.max(1, dims?.w || 1);
+  const h = Math.max(1, dims?.h || 1);
+  const dLat = 0.06;
+  const dLng = dLat * (w / h);
+  return [
+    [CENTER[0] - dLat / 2, CENTER[1] - dLng / 2],
+    [CENTER[0] + dLat / 2, CENTER[1] + dLng / 2],
+  ];
+}
+
+/** Pixel [x, y] (origin top-left) -> [lat, lng] inside bounds. */
+export function pxToLatLng(x, y, dims, bounds) {
+  const [[s, w] = [], [n, e] = []] = bounds || [];
+  if (n == null) return [CENTER[0], CENTER[1]];
+  const dh = dims?.h || 1;
+  const dw = dims?.w || 1;
+  return [n - (y / dh) * (n - s), w + (x / dw) * (e - w)];
+}
+
+/** Ray-casting point-in-ring test in PIXEL space. */
+export function pointInRing(px, py, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Bounding-box centre in pixels. Returns null for a missing bbox. */
+export function bboxCenter(bbox) {
+  if (!bbox) return null;
+  const [x1, y1, x2, y2] = bbox;
+  return [(x1 + x2) / 2, (y1 + y2) / 2];
+}
+
+/** Bounding-box area in px². */
+export function bboxArea(bbox) {
+  const [x1, y1, x2, y2] = bbox;
+  return Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+}
+
+/**
+ * Honest heuristic building coverage per parcel (PIXEL space):
+ * a building counts toward a parcel when its bbox centre falls inside the
+ * parcel ring. Coverage % = Σ inside-bbox areas / parcel area_px * 100,
+ * capped at 100. Labelled approximate in the UI.
+ */
+export function buildingCoverage(parcels, buildings) {
+  const out = {};
+  for (const p of parcels || []) {
+    const ring = p.polygon || [];
+    let count = 0;
+    let area = 0;
+    const ids = [];
+    for (const b of buildings || []) {
+      if (!b?.bbox) continue;
+      const center = bboxCenter(b.bbox);
+      if (!center) continue;
+      const [cx, cy] = center;
+      if (ring.length >= 3 && pointInRing(cx, cy, ring)) {
+        count += 1;
+        area += bboxArea(b.bbox);
+        ids.push(b.class ? `${b.class}@${Math.round(cx)},${Math.round(cy)}` : `box@${Math.round(cx)},${Math.round(cy)}`);
+      }
+    }
+    // No pixel area available -> coverage unknown (0), never a fabricated 100%.
+    const denom = p.area_px;
+    out[p.parcel_id] = {
+      count,
+      coveragePct: !denom ? 0 : Math.min(100, Math.round((area / denom) * 1000) / 10),
+      buildingIds: ids,
+    };
+  }
+  return out;
+}
+
+/** Parcels -> GeoJSON FeatureCollection (image-pixel CRS, properties enriched). */
+export function parcelsToGeoJSON(parcelResult, coverageById = {}) {
+  const parcels = parcelResult?.parcels || [];
+  return {
+    type: 'FeatureCollection',
+    properties: {
+      kind: 'parcels-approx',
+      disclaimer: 'AI-estimated/approximate — NOT legal cadastre.',
+      coordinate_system: 'image_pixels',
+      image_width_px: parcelResult?.image_width,
+      image_height_px: parcelResult?.image_height,
+    },
+    features: parcels.map((p) => ({
+      type: 'Feature',
+      properties: {
+        kind: 'parcel',
+        parcel_id: p.parcel_id,
+        area_m2_estimated: p.area_m2 ?? p.area,
+        area_ha_estimated: p.area_ha ?? ((p.area_m2 ?? p.area ?? 0) / 10000),
+        perimeter_m_estimated: p.perimeter_m ?? p.perimeter,
+        confidence_approx: p.confidence,
+        method: p.method,
+        num_vertices: p.num_vertices,
+        building_count: coverageById[p.parcel_id]?.count ?? 0,
+        building_coverage_pct: coverageById[p.parcel_id]?.coveragePct ?? 0,
+      },
+      geometry: { type: 'Polygon', coordinates: [p.polygon || []] },
+    })),
+  };
+}
+
+/** Flat bbox detections -> GeoJSON polygons (image pixels). */
+export function detectionsToGeoJSON(detections, kind = 'building') {
+  return {
+    type: 'FeatureCollection',
+    properties: { kind, coordinate_system: 'image_pixels' },
+    features: (detections || []).filter((d) => d?.bbox).map((d, i) => {
+      const [x1, y1, x2, y2] = d.bbox;
+      return {
+        type: 'Feature',
+        properties: {
+          kind,
+          class: d.class,
+          confidence: d.confidence,
+          bbox: d.bbox,
+          index: i,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]],
+        },
+      };
+    }),
+  };
+}
+
+/** Change items -> GeoJSON FeatureCollection (Image-A pixel CRS). */
+export function changesToGeoJSON(changes) {
+  return {
+    type: 'FeatureCollection',
+    properties: {
+      kind: 'changes',
+      coordinate_system: 'image_pixels',
+      reference: 'image_a',
+      disclaimer: 'AI estimates — verify by a surveyor or relevant authority.',
+    },
+    features: (changes || []).map((c, i) => ({
+      type: 'Feature',
+      properties: {
+        kind: 'change',
+        status: c.status,
+        changeKind: c.kind,
+        label: c.label,
+        confidence: c.confidence,
+        bbox: c.bbox,
+        method: c.method,
+        area_m2_estimated: c.area_m2 ?? c.area_px ?? 0,
+        area_px: c.area_px ?? 0,
+        index: i,
+      },
+      geometry: { type: 'Polygon', coordinates: [c.polygon || []] },
+    })),
+  };
+}
+
+/** Feature-category items (bbox or polygon) -> GeoJSON (image pixels). */
+export function featureItemsToGeoJSON(items, kind) {
+  return {
+    type: 'FeatureCollection',
+    properties: { kind, coordinate_system: 'image_pixels' },
+    features: (items || []).map((d, i) => {
+      const poly = d.polygon && d.polygon.length >= 3
+        ? d.polygon
+        : (() => {
+          if (!d.bbox) return null;
+          const [x1, y1, x2, y2] = d.bbox;
+          return [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]];
+        })();
+      if (!poly) return null;
+      return {
+        type: 'Feature',
+        properties: {
+          kind,
+          class: d.class,
+          confidence: d.confidence,
+          bbox: d.bbox,
+          method: d.method,
+          index: i,
+        },
+        geometry: { type: 'Polygon', coordinates: [poly] },
+      };
+    }).filter(Boolean),
+  };
+}

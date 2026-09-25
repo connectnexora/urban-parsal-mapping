@@ -52,6 +52,11 @@ try:
         FEATURE_TYPES,
         FEATURE_COLORS_HEX,
     )
+    from services.changes import (
+        detect_changes,
+        annotate_changes,
+        CHANGE_STATUSES,
+    )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.detection import (
         get_model_status,
@@ -73,6 +78,11 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
         FEATURE_TYPES,
         FEATURE_COLORS_HEX,
     )
+    from backend.services.changes import (
+        detect_changes,
+        annotate_changes,
+        CHANGE_STATUSES,
+    )
 
 from PIL import Image, UnidentifiedImageError
 
@@ -88,7 +98,7 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 # Prototype cap — drone frames are big, but bound memory per request.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
@@ -129,6 +139,11 @@ app = FastAPI(
 )
 
 # Allow the Vite React dev server to call the API from the browser.
+# Extra origins (docker, LAN, production domain) via ALLOWED_ORIGINS env:
+# comma-separated, e.g. ALLOWED_ORIGINS="https://app.example.com,http://192.168.1.10:5173"
+import os as _os
+
+_EXTRA_ORIGINS = [o.strip() for o in _os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -136,6 +151,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        *_EXTRA_ORIGINS,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -174,7 +190,7 @@ def _validate_extension(filename: str) -> str:
     return suffix
 
 
-def _read_dimensions(path: Path) -> tuple:
+def _read_dimensions(path: Path) -> tuple[int, int]:
     """Return (width, height) in pixels. Raises HTTPException if unreadable."""
     try:
         with Image.open(path) as img:
@@ -207,7 +223,8 @@ async def _store_upload(file: UploadFile) -> dict:
     safe_name = f"{stamp}_{uuid.uuid4().hex[:6]}_{_sanitize_filename(original)}"
     dest = UPLOAD_DIR / safe_name
     try:
-        dest.write_bytes(content)
+        # Off the event loop: drone frames can be tens of MB.
+        await run_in_threadpool(dest.write_bytes, content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not save upload: {exc}") from exc
 
@@ -228,6 +245,10 @@ async def _store_upload(file: UploadFile) -> dict:
     }
 
 
+def _public_upload_meta(stored: dict) -> dict:
+    return {k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")}
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -243,6 +264,7 @@ def root():
         "detect_buildings": "/detect/buildings",
         "detect_parcels": "/detect/parcels",
         "detect_features": "/detect/features",
+        "detect_changes": "/detect/changes",
         "model_status": "/detect/model-status",
         "parcel_status": "/detect/parcel-status",
         "disclaimer": APPROX_DISCLAIMER,
@@ -259,10 +281,10 @@ def health():
         "service": "urban-parcel-mapping-backend",
         "version": APP_VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model_loaded": status["loaded"],
-        "model_name": status["model_name"],
-        "model_type": status["model_type"],
-        "supports_buildings": status["supports_buildings"],
+        "model_loaded": status.get("loaded", False),
+        "model_name": status.get("model_name"),
+        "model_type": status.get("model_type", "none"),
+        "supports_buildings": status.get("supports_buildings", False),
         "parcel_ready": pstatus.get("ready", False),
         "parcel_method_hint": "yolo-seg" if pstatus.get("yolo_seg_available") else "classical-watershed-contours",
     }
@@ -280,18 +302,21 @@ def info():
             "2b. Approximate parcel polygons — /detect/parcels "
             "(preprocessing -> segmentation -> boundaries -> polygons -> "
             "simplification -> area; NOT legal cadastre)",
-            "2c. Multi-class features — /detect/features "
-            "(buildings / roads / vegetation / water / other)",
+            "2c. Full feature pipeline — /detect/features "
+            "(buildings/roads/vegetation/water/other)",
+            "2d. Change detection (Image A older vs Image B newer) — /detect/changes "
+            "(alignment -> YOLO matching -> parcel matching -> structural diff; "
+            "statuses UNCHANGED/NEW/REMOVED/CHANGED; AI estimates, verify by surveyor)",
             "3. Annotated images + GeoJSON saved to outputs/, served at /outputs/<file>",
-            "4. Interactive map overlays — parcel polygons + feature layers in MapView",
+            "4. Interactive map overlays per feature/parcel type — frontend layers",
         ],
         "stack": {
             "frontend": "React + Vite + Leaflet",
             "backend": "FastAPI",
-            "ai": "Ultralytics YOLO (+YOLO-seg when available) / OpenCV watershed fallback + classical colour segmentation",
+            "ai": "Ultralytics YOLO (+YOLO-seg when available) + classical colour/watershed segmentation",
         },
         "feature_types": list(FEATURE_TYPES),
-        "ai_status": "ready" if status["loaded"] else "model_missing",
+        "ai_status": "ready" if status.get("loaded") else "model_missing",
         "model": status,
         "parcels": pstatus,
         "disclaimer": APPROX_DISCLAIMER,
@@ -320,7 +345,7 @@ async def upload(file: UploadFile = File(...)):
     No AI detection runs on this endpoint.
     """
     stored = await _store_upload(file)
-    return {k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")}
+    return _public_upload_meta(stored)
 
 
 @app.post("/api/upload", status_code=201)
@@ -333,9 +358,8 @@ async def upload_image(file: UploadFile = File(...)):
     return JSONResponse(
         status_code=201,
         content={
-            **{k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")},
-            "message": "File received. Run POST /detect/buildings, /detect/parcels or /detect/features for AI analysis.",
-            "ai_status": "not_implemented",
+            **_public_upload_meta(stored),
+            "message": "File received. Run POST /detect/buildings, /detect/parcels, /detect/features or /detect/changes (two images) for AI analysis.",
             "detections": None,  # explicitly null — no fake results
         },
     )
@@ -372,6 +396,10 @@ async def _detect_buildings_impl(
             status_code=503,
             detail={"message": "Detection failed.", "help": str(exc)},
         )
+    except FileNotFoundError as exc:
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Inference failed: {exc}")
 
@@ -416,7 +444,21 @@ async def detect_buildings(
     confidence: float = Query(0.25, ge=0.01, le=0.99),
     iou: float = Query(0.45, ge=0.01, le=0.99),
 ):
-    """Run YOLO building detection on an uploaded drone image."""
+    """Run YOLO building detection on an uploaded drone image.
+
+    Returns:
+        {
+          "detections": [{"class": "building", "confidence": 0.92,
+                          "bbox": [x1, y1, x2, y2], "class_id": 0}],
+          "building_count": 3,
+          "average_confidence": 0.87,
+          "all_detections": [...],       # every raw YOLO box (real labels)
+          "total_detections": 5,
+          "model": {...}, "warning": ...,  # set when the model has no building class
+          "annotated_image": "/outputs/<file>_annotated.jpg",
+          ...
+        }
+    """
     return await _detect_buildings_impl(file, confidence, iou)
 
 
@@ -447,7 +489,7 @@ async def _detect_parcels_impl(
             status_code=503,
             detail={
                 "message": "Parcel extraction is unavailable.",
-                "help": pstatus.get("error") or pstatus.get("help"),
+                "help": pstatus.get("error") or pstatus.get("help") or "Parcel service is not ready.",
                 "parcel_status": pstatus,
             },
         )
@@ -463,8 +505,12 @@ async def _detect_parcels_impl(
             1600,  # max_dim preprocessing cap
             max_parcels,
         )
-    except (ValueError, FileNotFoundError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
@@ -483,7 +529,11 @@ async def _detect_parcels_impl(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Parcel annotation failed: {exc}")
     try:
-        geojson_path.write_text(json.dumps(result["geojson"], indent=2), encoding="utf-8")
+        await run_in_threadpool(
+            geojson_path.write_text,
+            json.dumps(result["geojson"], indent=2),
+            "utf-8",
+        )
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
 
@@ -493,11 +543,19 @@ async def _detect_parcels_impl(
         "image_width": result["image_width"],
         "image_height": result["image_height"],
         "gsd_m_per_px": result["gsd_m_per_px"],
+        "area_source": result["area_source"],
+        "area_label": result["area_label"],
+        "georeferencing": result["georeferencing"],
         "method": result["method"],
         "used_seg_model": result["used_seg_model"],
         "parcels": result["parcels"],
         "parcel_count": result["parcel_count"],
         "total_area_estimated_m2": result["total_area_estimated_m2"],
+        "total_area_estimated_ha": result["total_area_estimated_ha"],
+        "average_area_m2": result["average_area_m2"],
+        "average_area_ha": result["average_area_ha"],
+        "largest_parcel": result["largest_parcel"],
+        "summary": result["summary"],
         "average_confidence": result["average_confidence"],
         "geojson": result["geojson"],
         "annotated_image": f"/outputs/{annotated_name}",
@@ -515,7 +573,9 @@ async def detect_parcels(
     file: UploadFile = File(...),
     gsd: float = Query(
         0.1, ge=0.001, le=10.0,
-        description="Ground sample distance in meters/pixel. Areas are estimates.",
+        description="Fallback ground sample distance in meters/pixel. "
+        "Overridden by embedded GeoTIFF spatial tags when present; "
+        "otherwise areas are labelled estimated image-based.",
     ),
     epsilon: float = Query(
         0.012, ge=0.002, le=0.08,
@@ -527,9 +587,13 @@ async def detect_parcels(
 ):
     """Extract approximate parcel polygons from a drone image.
 
-    Returns parcels as [{parcel_id, area, perimeter, confidence, polygon}],
-    where area/perimeter are AI-estimated via GSD — NOT legal cadastre —
-    plus an annotated image and GeoJSON, both saved under outputs/.
+    Returns parcels as [{parcel_id, area, area_m2, area_ha, perimeter,
+    perimeter_m, confidence, polygon, area_px, perimeter_px, bbox,
+    num_vertices, method}] plus `summary` (totals, averages, largest parcel),
+    top-level total/average fields, `area_source` ('georeferenced' when the
+    file carries usable spatial tags, else 'estimated' with the assumed GSD)
+    — NOT legal cadastre — plus an annotated image and GeoJSON, both saved
+    under outputs/.
     """
     return await _detect_parcels_impl(file, gsd, epsilon, conf, max_parcels)
 
@@ -537,7 +601,8 @@ async def detect_parcels(
 @app.post("/api/detect/parcels")
 async def detect_parcels_api_alias(
     file: UploadFile = File(...),
-    gsd: float = Query(0.1, ge=0.001, le=10.0),
+    gsd: float = Query(0.1, ge=0.001, le=10.0,
+                       description="Fallback GSD in m/px; overridden by embedded GeoTIFF tags when present."),
     epsilon: float = Query(0.012, ge=0.002, le=0.08),
     conf: float = Query(0.25, ge=0.01, le=0.99),
     max_parcels: int = Query(60, ge=1, le=200),
@@ -551,7 +616,19 @@ async def _detect_features_impl(
     confidence: float,
     iou: float,
 ) -> dict:
-    """Full feature-extraction pipeline (never invents detections)."""
+    """Full feature-extraction pipeline (never invents detections).
+
+    Args:
+        file: uploaded drone/aerial image.
+        confidence: YOLO confidence threshold.
+        iou: YOLO NMS IoU threshold.
+
+    Returns:
+        dict with `features` (per-category lists), `counts` (incl. total),
+        `reasons` (why empty categories are empty), `feature_colors`,
+        `detections`/`building_count`/`average_confidence` (building summary),
+        `annotated_image`, `segmentation_stats`, `warnings`, `timestamp`.
+    """
     stored = await _store_upload(file)
     saved_path = Path(stored["path"])
     saved_name = stored["filename"]
@@ -656,3 +733,114 @@ async def detect_features_api_alias(
     iou: float = Query(0.45, ge=0.01, le=0.99),
 ):
     return await _detect_features_impl(file, confidence, iou)
+
+
+async def _detect_changes_impl(
+    file_a: UploadFile,
+    file_b: UploadFile,
+    confidence: float,
+    iou: float,
+    align: bool,
+    gsd: float,
+) -> dict:
+    stored_a = await _store_upload(file_a)
+    stored_b = await _store_upload(file_b)
+    path_a = Path(stored_a["path"])
+    path_b = Path(stored_b["path"])
+
+    try:
+        result = await run_in_threadpool(
+            detect_changes, path_a, path_b, confidence, iou, align, gsd
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        # Saved moments ago by _store_upload — a missing file here means a
+        # server-side race/deletion, not a client error.
+        raise HTTPException(status_code=500, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Change detection failed.", "help": str(exc)},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Change detection failed: {exc}")
+
+    stem_a = Path(stored_a["filename"]).stem[:100]
+    stem_b = Path(stored_b["filename"]).stem[:100]
+    annotated_name = f"{stem_a}_vs_{stem_b}_changes.jpg"
+    geojson_name = f"{stem_a}_vs_{stem_b}_changes.geojson"
+    annotated_path = OUTPUTS_DIR / annotated_name
+    geojson_path = OUTPUTS_DIR / geojson_name
+    try:
+        await run_in_threadpool(annotate_changes, path_a, result["changes"], annotated_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Change annotation failed: {exc}")
+    try:
+        await run_in_threadpool(
+            geojson_path.write_text,
+            json.dumps(result["geojson"], indent=2),
+            "utf-8",
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
+
+    return {
+        "file_a": stored_a["filename"],
+        "file_b": stored_b["filename"],
+        "image_a": result["image_a"],
+        "image_b": result["image_b"],
+        "reference": result["reference"],
+        "alignment": result["alignment"],
+        "gsd_m_per_px": result["gsd_m_per_px"],
+        "gsd_source": result.get("gsd_source", "assumed GSD"),
+        "changes": result["changes"],
+        "counts": result["counts"],
+        "summary": result["summary"],
+        "change_colors": result["change_colors"],
+        "change_statuses": list(CHANGE_STATUSES),
+        "geojson": result["geojson"],
+        "annotated_image": f"/outputs/{annotated_name}",
+        "annotated_image_file": annotated_name,
+        "geojson_file": f"/outputs/{geojson_name}",
+        "geojson_filename": geojson_name,
+        "warnings": result["warnings"],
+        "yolo_loaded": result["yolo_loaded"],
+        "disclaimer": result["disclaimer"],
+        "notes": result["notes"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/detect/changes")
+async def detect_changes_ep(
+    file_a: UploadFile = File(..., description="Older drone/aerial image (Image A)"),
+    file_b: UploadFile = File(..., description="Newer drone/aerial image (Image B)"),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+    align: bool = Query(True, description="ECC-align Image B onto Image A before comparing."),
+    gsd: float = Query(0.1, ge=0.001, le=10.0,
+                       description="Ground sample distance in m/px for change-area estimates."),
+):
+    """Compare older Image A vs newer Image B with computer vision.
+
+    Returns items labelled UNCHANGED / NEW / REMOVED / CHANGED covering new
+    buildings, removed structures, changed parcel areas, new roads and
+    construction areas, plus an annotated change image and GeoJSON under
+    outputs/. Coordinates are in Image-A pixel space. AI estimates — verify
+    by a surveyor or relevant authority.
+    """
+    return await _detect_changes_impl(file_a, file_b, confidence, iou, align, gsd)
+
+
+@app.post("/api/detect/changes")
+async def detect_changes_api_alias(
+    file_a: UploadFile = File(...),
+    file_b: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+    align: bool = Query(True),
+    gsd: float = Query(0.1, ge=0.001, le=10.0),
+):
+    """Vite-proxy alias for POST /detect/changes."""
+    return await _detect_changes_impl(file_a, file_b, confidence, iou, align, gsd)

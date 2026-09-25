@@ -73,7 +73,10 @@ def _is_road_label(label: str) -> bool:
     low = (label or "").strip().lower().replace("-", " ").replace("_", " ")
     if low in ROAD_ALIASES:
         return True
-    return any(tok in low for tok in ROAD_TOKENS)
+    # Whole-word match only: substring search would misclassify e.g.
+    # "airplane" (contains "lane") as a road.
+    words = set(low.split())
+    return any(tok in words for tok in ROAD_TOKENS)
 
 
 def categorize_label(label: str) -> str:
@@ -248,8 +251,12 @@ def segment_landcover(image_path: str | Path) -> Tuple[List[Dict], List[Dict], D
             "confidence": round(0.50 + 0.45 * min(1.0, reg["score"]), 3),
             "bbox": [x1, y1, x2, y2],
             "polygon": [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
-            "area_px": (x2 - x1) * (y2 - y1),
-            "coverage": round(((x2 - x1) * (y2 - y1)) / (full_w * full_h), 6),
+            # Segmented cell area (not bbox area: L-shaped regions would
+            # otherwise overstate their footprint).
+            "area_px": int(round(reg["cells"] * CELL_PX * CELL_PX * sx * sy)),
+            "coverage": round(
+                (reg["cells"] * CELL_PX * CELL_PX * sx * sy) / (full_w * full_h), 6
+            ),
             "method": "color-segmentation",
         }
         if reg["cls"] == 1:
@@ -299,10 +306,11 @@ def extract_features(
                 "YOLO model unavailable in this backend (missing weights or ultralytics). "
                 "Add a building-capable weight to models/ to enable building detection."
             )
-        reasons["roads"] = (
-            "Road extraction needs a road-capable model (YOLO-seg with road/street classes "
-            "or a dedicated road segmentation network); none is loaded, so no road geometry is reported."
-        )
+        if not features["roads"]:
+            reasons["roads"] = (
+                "Road extraction needs a road-capable model (YOLO-seg with road/street classes "
+                "or a dedicated road segmentation network); none is loaded, so no road geometry is reported."
+            )
         if not features["other"]:
             reasons["other"] = "YOLO model unavailable — no general object detections could be produced."
 
@@ -356,6 +364,7 @@ def annotate_features(
             for det in (features.get(ftype) or [])[:max_boxes_per_type]:
                 try:
                     x1, y1, x2, y2 = (int(v) for v in det["bbox"])
+                    conf = float(det.get("confidence", 0))
                 except Exception:
                     continue
                 x1, y1 = max(0, x1), max(0, y1)
@@ -363,7 +372,7 @@ def annotate_features(
                 if x2 <= x1 or y2 <= y1:
                     continue
                 draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
-                label = f"{det.get('class', ftype)} {float(det.get('confidence', 0)):.2f}"
+                label = f"{det.get('class', ftype)} {conf:.2f}"
                 tx0, ty0, tx1, ty1 = draw.textbbox((0, 0), label, font=font)
                 tw, th = tx1 - tx0, ty1 - ty0
                 by1 = max(0, y1 - th - 8)

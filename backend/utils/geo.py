@@ -1,11 +1,14 @@
 # Geospatial helpers for parcel geometry (pixel space + GSD estimates).
 #
-# All metric values are ESTIMATES from an assumed ground sample distance and
-# must be presented as approximate, never as survey-grade cadastre.
+# All metric values are ESTIMATES from either embedded GeoTIFF spatial tags
+# (when present) or an assumed ground sample distance, and must be presented
+# as approximate, never as survey-grade cadastre.
 
 from __future__ import annotations
 
 from typing import Dict, List, Sequence
+
+M2_PER_HA = 10000.0
 
 
 def pixel_area_to_sqmeters(pixel_area: float, meters_per_pixel: float) -> float:
@@ -22,6 +25,11 @@ def pixel_perimeter_to_meters(pixel_perimeter: float, meters_per_pixel: float) -
     if gsd <= 0:
         raise ValueError("meters_per_pixel must be positive.")
     return float(pixel_perimeter) * gsd
+
+
+def sqmeters_to_hectares(area_m2: float) -> float:
+    """Convert square meters to hectares (1 ha = 10,000 m²)."""
+    return float(area_m2) / M2_PER_HA
 
 
 def polygon_area_px(polygon: Sequence[Sequence[float]]) -> float:
@@ -73,12 +81,13 @@ def parcels_to_geojson(
                 "type": "Feature",
                 "properties": {
                     "parcel_id": p.get("parcel_id"),
-                    "area_m2_estimated": p.get("area"),
-                    "perimeter_m_estimated": p.get("perimeter"),
+                    "area_m2_estimated": p.get("area_m2", p.get("area")),
+                    "area_ha_estimated": p.get("area_ha"),
+                    "perimeter_m_estimated": p.get("perimeter_m", p.get("perimeter")),
                     "confidence_approx": p.get("confidence"),
                     "disclaimer": "AI-estimated/approximate — not a legal cadastral boundary.",
                 },
-                "geometry": {"type": "Polygon", "coordinates": [p.get("polygon", [])]},
+                "geometry": {"type": "Polygon", "coordinates": [p.get("polygon") or []]},
             }
             for p in parcels
         ],

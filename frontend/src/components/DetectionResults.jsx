@@ -42,7 +42,8 @@ export default function DetectionResults({
 
   if (!detection && !features) return null;
 
-  const annotatedUrl = resolveAssetUrl((features || detection)?.annotated_image);
+  const detUrl = resolveAssetUrl(detection?.annotated_image);
+  const featUrl = resolveAssetUrl(features?.annotated_image);
   const dets = detection?.detections || [];
   const count = detection?.building_count ?? dets.length;
   const avg = detection?.average_confidence ?? 0;
@@ -58,9 +59,9 @@ export default function DetectionResults({
             <div>
               <h2>4 · AI Building Detection (YOLO)</h2>
               <p className="sub">
-                Model <b>{detection.model?.name}</b> ({detection.model?.type}) ·{' '}
-                {count} building(s) · avg confidence {Number(avg).toFixed(2)} ·{' '}
-                {detection.image_width}×{detection.image_height}px
+                Model <b>{detection.model?.name ?? 'unknown model'}</b> ({detection.model?.type ?? 'unknown type'}) ·{' '}
+                {count} building(s) · avg confidence {Number(avg ?? 0).toFixed(2)} ·{' '}
+                {detection.image_width ?? '—'}×{detection.image_height ?? '—'}px
               </p>
             </div>
             <div className="detect-badges">
@@ -80,10 +81,10 @@ export default function DetectionResults({
             </figure>
             <figure>
               <figcaption>AI-detected image (outputs/)</figcaption>
-              {annotatedUrl && !features
-                ? <img src={annotatedUrl} alt="Annotated detections with building boxes" />
-                : !features && <p className="mono">Annotated image URL missing.</p>}
-              {detection.annotated_image && !features && (
+              {detUrl
+                ? <img src={detUrl} alt="Annotated detections with building boxes" />
+                : <p className="mono">Annotated image URL missing.</p>}
+              {detection.annotated_image && (
                 <p className="mono">{detection.annotated_image}</p>
               )}
             </figure>
@@ -99,9 +100,9 @@ export default function DetectionResults({
                   {dets.map((d, i) => (
                     <tr key={i}>
                       <td>{i + 1}</td>
-                      <td>{d.class}</td>
-                      <td>{Number(d.confidence).toFixed(3)}</td>
-                      <td className="mono">[{d.bbox.join(', ')}]</td>
+                      <td>{d.class ?? '—'}</td>
+                      <td>{Number(d.confidence ?? 0).toFixed(3)}</td>
+                      <td className="mono">[{Array.isArray(d.bbox) ? d.bbox.join(', ') : '—'}]</td>
                     </tr>
                   ))}
                 </tbody>
@@ -147,8 +148,8 @@ export default function DetectionResults({
             </figure>
             <figure>
               <figcaption>Feature-annotated image (outputs/)</figcaption>
-              {annotatedUrl
-                ? <img src={annotatedUrl} alt="Feature-annotated image with per-class boxes" />
+              {featUrl
+                ? <img src={featUrl} alt="Feature-annotated image with per-class boxes" />
                 : <p className="mono">Annotated image URL missing.</p>}
               {features.annotated_image && <p className="mono">{features.annotated_image}</p>}
             </figure>
@@ -172,10 +173,10 @@ export default function DetectionResults({
                       {shown.map((d, i) => (
                         <tr key={i}>
                           <td>{i + 1}</td>
-                          <td>{d.class}</td>
-                          <td>{Number(d.confidence).toFixed(3)}</td>
-                          <td className="mono">[{d.bbox.join(', ')}]</td>
-                          <td className="mono">{d.method}</td>
+                          <td>{d.class ?? '—'}</td>
+                          <td>{Number(d.confidence ?? 0).toFixed(3)}</td>
+                          <td className="mono">[{Array.isArray(d.bbox) ? d.bbox.join(', ') : '—'}]</td>
+                          <td className="mono">{d.method ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>
