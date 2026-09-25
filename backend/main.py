@@ -52,6 +52,13 @@ try:
         FEATURE_TYPES,
         FEATURE_COLORS_HEX,
     )
+    from services.changes import (
+        detect_changes,
+        annotate_changes,
+        CHANGE_COLORS_HEX,
+        CHANGE_DISCLAIMER,
+        CHANGE_STATUSES,
+    )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.detection import (
         get_model_status,
@@ -73,6 +80,13 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
         FEATURE_TYPES,
         FEATURE_COLORS_HEX,
     )
+    from backend.services.changes import (
+        detect_changes,
+        annotate_changes,
+        CHANGE_COLORS_HEX,
+        CHANGE_DISCLAIMER,
+        CHANGE_STATUSES,
+    )
 
 from PIL import Image, UnidentifiedImageError
 
@@ -88,7 +102,7 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 # Prototype cap — drone frames are big, but bound memory per request.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
@@ -247,6 +261,7 @@ def root():
         "detect_buildings": "/detect/buildings",
         "detect_parcels": "/detect/parcels",
         "detect_features": "/detect/features",
+        "detect_changes": "/detect/changes",
         "model_status": "/detect/model-status",
         "parcel_status": "/detect/parcel-status",
         "disclaimer": APPROX_DISCLAIMER,
@@ -286,6 +301,9 @@ def info():
             "simplification -> area; NOT legal cadastre)",
             "2c. Full feature pipeline — /detect/features "
             "(buildings/roads/vegetation/water/other)",
+            "2d. Change detection (Image A older vs Image B newer) — /detect/changes "
+            "(alignment -> YOLO matching -> parcel matching -> structural diff; "
+            "statuses UNCHANGED/NEW/REMOVED/CHANGED; AI estimates, verify by surveyor)",
             "3. Annotated images + GeoJSON saved to outputs/, served at /outputs/<file>",
             "4. Interactive map overlays per feature/parcel type — frontend layers",
         ],
@@ -686,3 +704,105 @@ async def detect_features_api_alias(
     iou: float = Query(0.45, ge=0.01, le=0.99),
 ):
     return await _detect_features_impl(file, confidence, iou)
+
+
+async def _detect_changes_impl(
+    file_a: UploadFile,
+    file_b: UploadFile,
+    confidence: float,
+    iou: float,
+    align: bool,
+    gsd: float,
+) -> dict:
+    stored_a = await _store_upload(file_a)
+    stored_b = await _store_upload(file_b)
+    path_a = Path(stored_a["path"])
+    path_b = Path(stored_b["path"])
+
+    try:
+        result = await run_in_threadpool(
+            detect_changes, path_a, path_b, confidence, iou, align, gsd
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Change detection failed.", "help": str(exc)},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Change detection failed: {exc}")
+
+    stem_a = Path(stored_a["filename"]).stem
+    stem_b = Path(stored_b["filename"]).stem
+    annotated_name = f"{stem_a}_vs_{stem_b}_changes.jpg"
+    geojson_name = f"{stem_a}_vs_{stem_b}_changes.geojson"
+    annotated_path = OUTPUTS_DIR / annotated_name
+    geojson_path = OUTPUTS_DIR / geojson_name
+    try:
+        await run_in_threadpool(annotate_changes, path_a, result["changes"], annotated_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Change annotation failed: {exc}")
+    try:
+        geojson_path.write_text(json.dumps(result["geojson"], indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not write GeoJSON: {exc}")
+
+    return {
+        "file_a": stored_a["filename"],
+        "file_b": stored_b["filename"],
+        "image_a": result["image_a"],
+        "image_b": result["image_b"],
+        "reference": result["reference"],
+        "alignment": result["alignment"],
+        "gsd_m_per_px": result["gsd_m_per_px"],
+        "changes": result["changes"],
+        "counts": result["counts"],
+        "summary": result["summary"],
+        "change_colors": result["change_colors"],
+        "change_statuses": list(CHANGE_STATUSES),
+        "geojson": result["geojson"],
+        "annotated_image": f"/outputs/{annotated_name}",
+        "annotated_image_file": annotated_name,
+        "geojson_file": f"/outputs/{geojson_name}",
+        "geojson_filename": geojson_name,
+        "warnings": result["warnings"],
+        "yolo_loaded": result["yolo_loaded"],
+        "disclaimer": result["disclaimer"],
+        "notes": result["notes"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/detect/changes")
+async def detect_changes_ep(
+    file_a: UploadFile = File(..., description="Older drone/aerial image (Image A)"),
+    file_b: UploadFile = File(..., description="Newer drone/aerial image (Image B)"),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+    align: bool = Query(True, description="ECC-align Image B onto Image A before comparing."),
+    gsd: float = Query(0.1, ge=0.001, le=10.0,
+                       description="Ground sample distance in m/px for change-area estimates."),
+):
+    """Compare older Image A vs newer Image B with computer vision.
+
+    Returns items labelled UNCHANGED / NEW / REMOVED / CHANGED covering new
+    buildings, removed structures, changed parcel areas, new roads and
+    construction areas, plus an annotated change image and GeoJSON under
+    outputs/. Coordinates are in Image-A pixel space. AI estimates — verify
+    by a surveyor or relevant authority.
+    """
+    return await _detect_changes_impl(file_a, file_b, confidence, iou, align, gsd)
+
+
+@app.post("/api/detect/changes")
+async def detect_changes_api_alias(
+    file_a: UploadFile = File(...),
+    file_b: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+    align: bool = Query(True),
+    gsd: float = Query(0.1, ge=0.001, le=10.0),
+):
+    """Vite-proxy alias for POST /detect/changes."""
+    return await _detect_changes_impl(file_a, file_b, confidence, iou, align, gsd)

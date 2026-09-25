@@ -208,6 +208,35 @@ export function detectionsToGeoJSON(detections, kind = 'building') {
   };
 }
 
+/** Change items -> GeoJSON FeatureCollection (Image-A pixel CRS). */
+export function changesToGeoJSON(changes) {
+  return {
+    type: 'FeatureCollection',
+    properties: {
+      kind: 'changes',
+      coordinate_system: 'image_pixels',
+      reference: 'image_a',
+      disclaimer: 'AI estimates — verify by a surveyor or relevant authority.',
+    },
+    features: (changes || []).map((c, i) => ({
+      type: 'Feature',
+      properties: {
+        kind: 'change',
+        status: c.status,
+        changeKind: c.kind,
+        label: c.label,
+        confidence: c.confidence,
+        bbox: c.bbox,
+        method: c.method,
+        area_m2_estimated: c.area_m2 ?? c.area_px ?? 0,
+        area_px: c.area_px ?? 0,
+        index: i,
+      },
+      geometry: { type: 'Polygon', coordinates: [c.polygon || []] },
+    })),
+  };
+}
+
 /** Feature-category items (bbox or polygon) -> GeoJSON (image pixels). */
 export function featureItemsToGeoJSON(items, kind) {
   return {

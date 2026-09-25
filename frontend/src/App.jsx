@@ -9,6 +9,7 @@ import ParcelDetail from './components/ParcelDetail.jsx';
 import SummaryStats from './components/SummaryStats.jsx';
 import ReportModal from './components/ReportModal.jsx';
 import CompareView from './components/CompareView.jsx';
+import ChangeView from './components/ChangeView.jsx';
 import './App.css';
 
 export default function App() {
@@ -29,6 +30,10 @@ export default function App() {
   const [isExtracting, setIsExtracting] = useState(false);
   // Parcel selected on the map (popup + sidebar details).
   const [selectedParcelId, setSelectedParcelId] = useState(null);
+  // Optional change-detection result (Image A older vs Image B newer).
+  const [changeResult, setChangeResult] = useState(null);
+  const [changeError, setChangeError] = useState(null);
+  const [isComparing, setIsComparing] = useState(false);
   // Client-measured run timings (ms) + uploaded file info for the report.
   const [timings, setTimings] = useState({});
   const [uploadedInfo, setUploadedInfo] = useState(null);
@@ -69,6 +74,7 @@ export default function App() {
           overlayUrl={originalPreview}
           selectedParcelId={selectedParcelId}
           onSelectParcel={selectParcel}
+          changeResult={changeResult}
         />
         <ResultsPanel
           backendStatus={backendStatus}
@@ -115,6 +121,15 @@ export default function App() {
         features={features}
         parcelResult={parcelResult}
         originalPreview={originalPreview}
+      />
+      <ChangeView
+        changeResult={changeResult}
+        setChangeResult={setChangeResult}
+        setChangeError={setChangeError}
+        isComparing={isComparing}
+        setIsComparing={setIsComparing}
+        recordTiming={recordTiming}
+        setBackendStatus={setBackendStatus}
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>

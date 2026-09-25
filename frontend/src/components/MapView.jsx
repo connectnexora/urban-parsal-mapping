@@ -17,6 +17,8 @@ import {
   buildingCoverage,
   parcelsToGeoJSON,
   detectionsToGeoJSON,
+  featureItemsToGeoJSON,
+  changesToGeoJSON,
 } from '../utils/mapGeo.js';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -44,6 +46,14 @@ const FEATURE_LAYER_DEFS = [
   { key: 'water', label: 'Water' },
   { key: 'other', label: 'Other features' },
 ];
+
+const CHANGE_STATUSES = ['NEW', 'REMOVED', 'CHANGED', 'UNCHANGED'];
+const CHANGE_COLORS_DEFAULT = {
+  NEW: '#2ecc71',
+  REMOVED: '#f87171',
+  CHANGED: '#fbbf24',
+  UNCHANGED: '#a0a0a0',
+};
 
 const MAX_SHAPES_PER_LAYER = 150;
 
@@ -106,6 +116,7 @@ export default function MapView({
   overlayUrl,
   selectedParcelId,
   onSelectParcel,
+  changeResult,
 }) {
   const [fitKey, setFitKey] = useState(0);
 
@@ -116,11 +127,17 @@ export default function MapView({
   }, []);
 
   const parcels = parcelResult?.parcels || [];
+  const changes = changeResult?.changes || [];
+  const changeColors = { ...CHANGE_COLORS_DEFAULT, ...(changeResult?.change_colors || {}) };
   const dims = useMemo(() => {
-    const w = parcelResult?.image_width || featureResult?.image_width || detection?.image_width;
-    const h = parcelResult?.image_height || featureResult?.image_height || detection?.image_height;
+    // Change overlays live in Image-A pixel space; prefer those dims when a
+    // change result exists so change geometry aligns with the frame.
+    const w = changeResult?.image_a?.width || parcelResult?.image_width
+      || featureResult?.image_width || detection?.image_width;
+    const h = changeResult?.image_a?.height || parcelResult?.image_height
+      || featureResult?.image_height || detection?.image_height;
     return w && h ? { w, h } : null;
-  }, [parcelResult, featureResult, detection]);
+  }, [changeResult, parcelResult, featureResult, detection]);
 
   const frame = useMemo(() => (dims ? imageFrame(dims) : null), [dims]);
 
@@ -163,6 +180,11 @@ export default function MapView({
     };
   }, [dims, frame]);
 
+  const changesGeoJSON = useMemo(
+    () => (changes.length ? changesToGeoJSON(changes) : null),
+    [changes],
+  );
+
   // Combined bounds of everything detected (for fit-to-area).
   const resultsBounds = useMemo(() => {
     if (!dims || !frame) return null;
@@ -173,6 +195,11 @@ export default function MapView({
     for (const b of buildingItems) {
       if (!b?.bbox) continue;
       const [x1, y1, x2, y2] = b.bbox;
+      pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+    }
+    for (const c of changes) {
+      if (!c?.bbox) continue;
+      const [x1, y1, x2, y2] = c.bbox;
       pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
     }
     for (const { key } of FEATURE_LAYER_DEFS) {
@@ -186,7 +213,7 @@ export default function MapView({
     if (!pts.length) return null;
     // pts are [lat, lng] pairs already.
     return L.latLngBounds(pts.map(([lat, lng]) => [lat, lng]));
-  }, [dims, frame, parcels, buildingItems, featureResult]);
+  }, [dims, frame, parcels, buildingItems, changes, featureResult]);
 
   const onEachParcel = (feature, layer) => {
     const p = feature.properties || {};
@@ -221,6 +248,22 @@ export default function MapView({
     );
   };
 
+  const onEachChange = (feature, layer) => {
+    const p = feature.properties || {};
+    layer.bindTooltip(`${p.status} · ${p.changeKind}: ${p.label}`, { sticky: true });
+    layer.bindPopup(
+      `<b>${p.status}</b> — ${p.changeKind}<br/>${p.label}` +
+      `<br/>conf: ${Number(p.confidence).toFixed(3)}` +
+      `<br/>bbox: [${(p.bbox || []).join(', ')}]` +
+      (p.method ? `<br/>method: ${p.method}` : ''),
+    );
+  };
+
+  const changeStyle = (feature) => {
+    const color = changeColors[feature?.properties?.status] || '#ffffff';
+    return { color, weight: 2, fillColor: color, fillOpacity: 0.3 };
+  };
+
   const onEachFeature = (feature, layer) => {
     const p = feature.properties || {};
     layer.bindTooltip(`${p.kind}: ${p.class} · ${Number(p.confidence).toFixed(2)}`, { sticky: true });
@@ -239,14 +282,17 @@ export default function MapView({
   const hasParcels = parcels.length > 0;
   const hasBuildings = buildingItems.length > 0;
   const hasFeatures = Object.keys(featureGeoJSON).length > 0;
+  const hasChanges = changes.length > 0;
+  const changeCounts = changeResult?.counts || {};
   const hasOverlay = !!(frame && overlayUrl && (featureResult || parcelResult || detection));
-  const hasAnything = hasParcels || hasBuildings || hasFeatures || hasOverlay;
+  const hasAnything = hasParcels || hasBuildings || hasFeatures || hasOverlay || hasChanges;
 
   const sub = hasAnything
     ? `Showing ${hasParcels ? `${parcels.length} parcel(s)` : ''}` +
-      `${hasParcels && (hasBuildings || hasFeatures) ? ' + ' : ''}` +
+      `${hasParcels && (hasBuildings || hasFeatures || hasChanges) ? ' + ' : ''}` +
       `${hasBuildings ? `${buildingItems.length} building(s)` : ''}` +
       `${hasFeatures ? ` + ${Object.values(featureGeoJSON).reduce((n, g) => n + g.features.length, 0)} other feature(s)` : ''}` +
+      `${hasChanges ? ` + ${changes.length} change(s)` : ''}` +
       ` — schematic overlays, NOT legal cadastre. Click a parcel for details.`
     : 'Parcel polygons, buildings, roads and other features overlay here after the AI runs.';
 
@@ -323,6 +369,30 @@ export default function MapView({
               </LayersControl.Overlay>
             );
           })}
+
+          {changesGeoJSON && toLatLng && CHANGE_STATUSES.map((st) => {
+            const n = changeCounts[st.toLowerCase()] ?? changes.filter((c) => c.status === st).length;
+            if (!n) return null;
+            const data = {
+              ...changesGeoJSON,
+              features: changesGeoJSON.features.filter((f) => f.properties?.status === st),
+            };
+            return (
+              <LayersControl.Overlay
+                key={st}
+                checked={st !== 'UNCHANGED'}
+                name={`Changes: ${st} (${n})`}
+              >
+                <GeoJSON
+                  key={`chg-${st}-${n}`}
+                  data={data}
+                  coordsToLatLng={toLatLng}
+                  style={changeStyle}
+                  onEachFeature={onEachChange}
+                />
+              </LayersControl.Overlay>
+            );
+          })}
         </LayersControl>
 
         {!hasAnything && (
@@ -354,6 +424,17 @@ export default function MapView({
             <div key={key} className="layer-row" title={note || `${n} ${key} shown`}>
               <span className="legend-dot" style={{ background: colors[key] }} />
               <span className="layer-name">{key[0].toUpperCase() + key.slice(1)}</span>
+              <span className="mono">{n}</span>
+            </div>
+          );
+        })}
+        {hasChanges && CHANGE_STATUSES.map((st) => {
+          const n = changeCounts[st.toLowerCase()] ?? changes.filter((c) => c.status === st).length;
+          if (!n) return null;
+          return (
+            <div key={st} className="layer-row" title={`AI-estimated ${st.toLowerCase()} changes (verify by surveyor)`}>
+              <span className="legend-dot" style={{ background: changeColors[st] }} />
+              <span className="layer-name">Changes: {st}</span>
               <span className="mono">{n}</span>
             </div>
           );
