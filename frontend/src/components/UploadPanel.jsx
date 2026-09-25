@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-<<<<<<< HEAD
 import {
   API_BASE,
   checkHealth,
   uploadImage,
   detectBuildings,
+  detectFeatures,
   extractParcels,
   getModelStatus,
   getParcelStatus,
 } from '../services/api.js';
-=======
-import { API_BASE, checkHealth, uploadImage, detectBuildings, detectFeatures, getModelStatus } from '../services/api.js';
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
 // Browsers can render these directly; TIFF gets a file card instead.
@@ -60,13 +57,10 @@ export default function UploadPanel({
   setOriginalPreview,
   isDetecting,
   setIsDetecting,
-<<<<<<< HEAD
   setParcelResult,
   setParcelError,
-=======
   setFeatures,
   setFeaturesError,
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   isExtracting,
   setIsExtracting,
 }) {
@@ -79,17 +73,12 @@ export default function UploadPanel({
   const [message, setMessage] = useState('');
   const [messageOk, setMessageOk] = useState(false);
   const [uploaded, setUploaded] = useState(null);
-<<<<<<< HEAD
-  const [processMsg, setProcessMsg] = useState('');
-=======
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   const [modelStatus, setModelStatus] = useState(null);
   const [parcelStatus, setParcelStatus] = useState(null);
   const [confidence, setConfidence] = useState(0.25);
-<<<<<<< HEAD
   const [gsd, setGsd] = useState(0.1);
-=======
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+  // Which extraction is running: 'features' | 'parcels' | null.
+  const [extractKind, setExtractKind] = useState(null);
   const urlRef = useRef(null);
 
   useEffect(() => () => {
@@ -115,17 +104,6 @@ export default function UploadPanel({
     }
   };
 
-<<<<<<< HEAD
-=======
-  useEffect(() => {
-    refreshModelStatus();
-  }, []);
-
-  useEffect(() => () => {
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-  }, []);
-
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   const clearPreview = () => {
     if (urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
@@ -133,11 +111,8 @@ export default function UploadPanel({
     }
     setPreview(null);
   };
-<<<<<<< HEAD
-=======
 
   const working = busy || isDetecting || isExtracting;
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -147,13 +122,9 @@ export default function UploadPanel({
     setUploaded(null);
     setProgress(null);
     setMessage('');
-<<<<<<< HEAD
     setDetectionError?.(null);
     setParcelError?.(null);
-=======
-    setDetectionError(null);
-    setFeaturesError(null);
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+    setFeaturesError?.(null);
 
     const err = validateFile(f);
     if (err) {
@@ -169,11 +140,7 @@ export default function UploadPanel({
       const url = URL.createObjectURL(f);
       urlRef.current = url;
       setPreview(url);
-<<<<<<< HEAD
       setOriginalPreview?.(url);
-=======
-      setOriginalPreview(url);
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
       // Read real pixel dimensions locally — no upload needed.
       const img = new Image();
       img.onload = () => setLocalDims({ w: img.naturalWidth, h: img.naturalHeight });
@@ -187,11 +154,7 @@ export default function UploadPanel({
     } else {
       // GeoTIFF: browsers can't render .tif — dimensions arrive with the server response.
       setLocalDims(null);
-<<<<<<< HEAD
       setOriginalPreview?.(null);
-=======
-      setOriginalPreview(null);
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     }
   };
 
@@ -205,11 +168,7 @@ export default function UploadPanel({
       setHealthData(data);
       setMessage(`Backend responded: ${data.status} (${data.service})`);
       setMessageOk(true);
-<<<<<<< HEAD
       await refreshStatuses();
-=======
-      await refreshModelStatus();
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     } catch (err) {
       setBackendStatus('down');
       setMessage(`Cannot reach backend at ${API_BASE}. Is uvicorn running?`);
@@ -246,44 +205,26 @@ export default function UploadPanel({
     }
   };
 
-<<<<<<< HEAD
-  const onProcess = () => {
-    if (!uploaded) return;
-    setProcessMsg(
-      `"${uploaded.filename}" queued for AI analysis. ` +
-      'Run Detect Buildings or Extract Parcels below for real inference.',
-    );
-  };
-
-  const onDetect = async () => {
-    if (!file || isDetecting || !setDetection) return;
-    setIsDetecting(true);
-    setDetectionError?.(null);
-    setMessage('Running YOLO building detection… (first run may take a while)');
-=======
   const runInference = async (kind) => {
     if (!file || isDetecting || isExtracting) return;
     const isFeatures = kind === 'features';
-    if (isFeatures) setIsExtracting(true);
-    else setIsDetecting(true);
-    setDetectionError(null);
-    setFeaturesError(null);
+    if (isFeatures) {
+      setIsExtracting(true);
+      setExtractKind('features');
+    } else {
+      setIsDetecting(true);
+    }
+    setDetectionError?.(null);
+    setFeaturesError?.(null);
     setMessage(isFeatures ? 'Running feature-extraction pipeline…' : 'Running YOLO building detection… (first run may take a while)');
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     setMessageOk(false);
     try {
       const res = isFeatures
         ? await detectFeatures(file, { confidence })
         : await detectBuildings(file, { confidence });
       setBackendStatus('ok');
-<<<<<<< HEAD
-      const n = res.building_count ?? res.detections?.length ?? 0;
-      setMessage(`Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`);
-      setMessageOk(true);
-      await refreshStatuses();
-=======
       if (isFeatures) {
-        setFeatures(res);
+        setFeatures?.(res);
         const c = res.counts || {};
         setMessage(
           `Features extracted — buildings ${c.buildings ?? 0}, roads ${c.roads ?? 0}, ` +
@@ -291,15 +232,14 @@ export default function UploadPanel({
           `Annotated: ${res.annotated_image}`
         );
       } else {
-        setDetection(res);
+        setDetection?.(res);
         const n = res.building_count ?? res.detections?.length ?? 0;
         setMessage(
           `Detected ${n} building(s), avg confidence ${(res.average_confidence ?? 0).toFixed(2)}. Annotated: ${res.annotated_image}`
         );
       }
       setMessageOk(true);
-      await refreshModelStatus();
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+      await refreshStatuses();
     } catch (err) {
       const status = err.response?.status;
       const detail = err.response?.data?.detail;
@@ -309,47 +249,41 @@ export default function UploadPanel({
           `Model unavailable (HTTP 503). ` +
           (help || err.message) +
           ` See models/README.md — place a building-trained YOLO weight in models/ and restart the backend.`;
-<<<<<<< HEAD
-        setDetection(null);
-        setDetectionError?.(msg);
-        setMessage(msg);
-      } else {
-        const msg = `Detection failed: ${help || err.message}`;
-        setDetection(null);
-        setDetectionError?.(msg);
-=======
-        if (isFeatures) setFeaturesError(msg);
+        if (isFeatures) setFeaturesError?.(msg);
         else {
-          setDetection(null);
-          setDetectionError(msg);
+          setDetection?.(null);
+          setDetectionError?.(msg);
         }
         setMessage(msg);
       } else {
         const msg = `AI run failed: ${help || err.message}`;
-        if (isFeatures) setFeaturesError(msg);
+        if (isFeatures) setFeaturesError?.(msg);
         else {
-          setDetection(null);
-          setDetectionError(msg);
+          setDetection?.(null);
+          setDetectionError?.(msg);
         }
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
         setMessage(msg);
       }
     } finally {
-      if (isFeatures) setIsExtracting(false);
-      else setIsDetecting(false);
+      if (isFeatures) {
+        setIsExtracting(false);
+        setExtractKind(null);
+      } else {
+        setIsDetecting(false);
+      }
     }
   };
 
-<<<<<<< HEAD
   const onExtractParcels = async () => {
-    if (!file || isExtracting || !setParcelResult) return;
+    if (!file || isExtracting || isDetecting) return;
     setIsExtracting(true);
+    setExtractKind('parcels');
     setParcelError?.(null);
     setMessage('Extracting approximate parcel polygons… (preprocessing → segmentation → contours)');
     setMessageOk(false);
     try {
       const res = await extractParcels(file, { gsd, epsilon: 0.012, conf: confidence });
-      setParcelResult(res);
+      setParcelResult?.(res);
       setBackendStatus('ok');
       setMessage(`Extracted ${res.parcel_count} approximate parcel(s) via ${res.method}. Annotated: ${res.annotated_image}`);
       setMessageOk(true);
@@ -358,20 +292,14 @@ export default function UploadPanel({
       const detail = err.response?.data?.detail;
       const help = typeof detail === 'object' ? detail?.help || detail?.message : detail;
       const msg = `Parcel extraction failed: ${help || err.message}`;
-      setParcelResult(null);
+      setParcelResult?.(null);
       setParcelError?.(msg);
       setMessage(msg);
     } finally {
       setIsExtracting(false);
+      setExtractKind(null);
     }
   };
-=======
-  const modelBadge = !modelStatus
-    ? 'Model status: unknown — press Test Backend Connection'
-    : modelStatus.loaded
-      ? `Model: ${modelStatus.model_name} (${modelStatus.model_type}) · buildings: ${modelStatus.supports_buildings ? 'yes' : 'no (generic COCO fallback)'}`
-      : `Model: NOT LOADED — ${modelStatus.error || 'see models/README.md'}`;
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
   const dimsLabel = localDims
     ? `${localDims.w} × ${localDims.h} px`
@@ -380,7 +308,6 @@ export default function UploadPanel({
       : extOf(file?.name || '') === '.tif' || extOf(file?.name || '') === '.tiff'
         ? 'TIFF — dimensions available after upload'
         : '—';
-<<<<<<< HEAD
 
   const modelBadge = !modelStatus
     ? 'YOLO status: unknown — press Test Backend Connection'
@@ -404,21 +331,8 @@ export default function UploadPanel({
       <ol className="steps">
         <li className="done">✓ Project structure ready</li>
         <li className="done">✓ Backend connectivity</li>
-        <li className="active">→ Buildings (YOLO) + Parcels (polygons)</li>
+        <li className="active">→ Buildings (YOLO) + Parcels (polygons) + Features</li>
         <li>○ Report</li>
-=======
-
-  return (
-    <section className="card">
-      <h2>1 · Upload &amp; AI Detection</h2>
-      <p className="sub">Upload a drone/aerial image, then run real inference. No fake boxes.</p>
-
-      <ol className="steps">
-        <li className="done">✓ Project structure ready</li>
-        <li className="done">✓ Backend connectivity + upload</li>
-        <li className="active">→ POST /detect/features (live pipeline)</li>
-        <li>○ Boundaries → Area → Map → Report</li>
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
       </ol>
 
       <label className="drop">
@@ -479,32 +393,19 @@ export default function UploadPanel({
 
       <div style={{ height: 10 }} />
 
-<<<<<<< HEAD
       <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy}>
         {busy ? 'Uploading…' : 'Upload to Backend'}
       </button>
-      <button className="btn process" onClick={onProcess} disabled={!uploaded || busy}>
-        Process Image
+      <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || aiBusy}>
+        {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
       </button>
-      <button className="btn detect" onClick={onDetect} disabled={!file || !!fileError || aiBusy}>
+      <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || aiBusy}>
         {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
       </button>
       <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || aiBusy}>
-        {isExtracting ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
+        {isExtracting && extractKind === 'parcels' ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
       </button>
       <button className="btn ghost" onClick={testConnection} disabled={aiBusy}>
-=======
-      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || working}>
-        {busy ? 'Uploading…' : 'Upload to Backend'}
-      </button>
-      <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || working}>
-        {isExtracting ? 'Extracting features…' : 'Process Image (AI Features)'}
-      </button>
-      <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || working}>
-        {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (AI)'}
-      </button>
-      <button className="btn ghost" onClick={testConnection} disabled={working}>
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
         Test Backend Connection
       </button>
 

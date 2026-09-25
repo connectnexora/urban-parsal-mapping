@@ -1,28 +1,16 @@
-<<<<<<< HEAD
-export default function ResultsPanel({ backendStatus, healthData, detection, parcelResult }) {
-=======
-export default function ResultsPanel({ backendStatus, healthData, detection, features }) {
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+export default function ResultsPanel({ backendStatus, healthData, detection, parcelResult, features }) {
   const dot = backendStatus === 'ok' ? 'dot ok' : backendStatus === 'down' ? 'dot bad' : 'dot';
   const label =
     backendStatus === 'ok' ? 'Backend: connected' : backendStatus === 'down' ? 'Backend: offline' : 'Backend: not tested';
 
-<<<<<<< HEAD
   const hasDet = detection != null;
   const buildings = hasDet ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
   const avgConf = hasDet ? (detection.average_confidence ?? 0).toFixed(2) : '—';
   const hasParcels = parcelResult != null;
   const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
   const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
-=======
-  const hasResult = detection != null;
   const hasFeatures = features != null;
-  const buildings = hasResult ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
-  const avgConf = hasResult ? (detection.average_confidence ?? 0).toFixed(2) : '—';
-  const total = hasResult ? (detection.total_detections ?? detection.all_detections?.length ?? '—') : '—';
-  const modelName = hasResult ? detection.model?.name || detection.model_name || '—' : '—';
   const counts = features?.counts || {};
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 
   return (
     <section className="card">

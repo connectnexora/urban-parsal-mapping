@@ -19,12 +19,9 @@ export default function App() {
   const [featuresError, setFeaturesError] = useState(null);
   const [originalPreview, setOriginalPreview] = useState(null);
   const [isDetecting, setIsDetecting] = useState(false);
-<<<<<<< HEAD
   // Approximate parcels from POST /detect/parcels (null until a run finishes).
   const [parcelResult, setParcelResult] = useState(null);
   const [parcelError, setParcelError] = useState(null);
-=======
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   const [isExtracting, setIsExtracting] = useState(false);
 
   return (
@@ -40,30 +37,20 @@ export default function App() {
           setOriginalPreview={setOriginalPreview}
           isDetecting={isDetecting}
           setIsDetecting={setIsDetecting}
-<<<<<<< HEAD
           setParcelResult={setParcelResult}
           setParcelError={setParcelError}
-          isExtracting={isExtracting}
-          setIsExtracting={setIsExtracting}
-        />
-        <MapView parcelResult={parcelResult} />
-=======
           setFeatures={setFeatures}
           setFeaturesError={setFeaturesError}
           isExtracting={isExtracting}
           setIsExtracting={setIsExtracting}
         />
-        <MapView featureResult={features} overlayUrl={originalPreview} />
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+        <MapView parcelResult={parcelResult} featureResult={features} overlayUrl={originalPreview} />
         <ResultsPanel
           backendStatus={backendStatus}
           healthData={healthData}
           detection={detection}
-<<<<<<< HEAD
           parcelResult={parcelResult}
-=======
           features={features}
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
         />
       </main>
       <DetectionResults
@@ -82,13 +69,8 @@ export default function App() {
         isExtracting={isExtracting}
       />
       <footer className="footer">
-<<<<<<< HEAD
-        <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · outputs/</span>
-        <span>React + Leaflet · FastAPI · YOLO-seg / OpenCV watershed</span>
-=======
-        <span>Feature pipeline · POST /detect/features · annotated outputs in outputs/</span>
-        <span>React + Leaflet · FastAPI · YOLO + colour segmentation</span>
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+        <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>
+        <span>React + Leaflet · FastAPI · YOLO-seg / watershed / colour segmentation</span>
       </footer>
     </div>
   );
