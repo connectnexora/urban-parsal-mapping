@@ -1,27 +1,35 @@
 import { resolveAssetUrl } from '../services/api.js';
 
+const FEATURE_ORDER = ['buildings', 'roads', 'vegetation', 'water', 'other'];
+const ROW_CAP = 15;
+
 /**
- * Shows the detection outcome: original vs AI-annotated image,
- * building count, average confidence, and the raw detection table.
- * Everything rendered here comes from the live POST /detect/buildings
- * response — nothing is hardcoded.
+ * Shows detection outcomes. Everything rendered here comes from live
+ * backend responses (POST /detect/buildings, POST /detect/features) —
+ * nothing is hardcoded. Empty categories show backend reasons, never
+ * invented geometry.
  */
-export default function DetectionResults({ detection, error, originalPreview, isDetecting }) {
-  if (isDetecting) {
+export default function DetectionResults({
+  detection, error, originalPreview, isDetecting,
+  features, featuresError, isExtracting,
+}) {
+  if (isDetecting || isExtracting) {
     return (
       <section className="card detect-section">
-        <h2>4 · AI Building Detection</h2>
-        <p className="sub">Running YOLO inference on the backend…</p>
+        <h2>4 · AI Detection</h2>
+        <p className="sub">
+          {isExtracting ? 'Running feature-extraction pipeline on the backend…' : 'Running YOLO inference on the backend…'}
+        </p>
         <div className="progress-bar"><div className="progress-fill anim" /></div>
       </section>
     );
   }
 
-  if (error && !detection) {
+  if ((error || featuresError) && !detection && !features) {
     return (
       <section className="card detect-section">
-        <h2>4 · AI Building Detection</h2>
-        <p className="warn-box">{error}</p>
+        <h2>4 · AI Detection</h2>
+        <p className="warn-box">{error || featuresError}</p>
         <p className="mono">
           Required: a building-trained YOLO weight in <b>models/</b> (e.g.
           models/building_yolov8n.pt trained on xView / DOTA-v2 / SpaceNet /
@@ -32,74 +40,154 @@ export default function DetectionResults({ detection, error, originalPreview, is
     );
   }
 
-  if (!detection) return null;
+  if (!detection && !features) return null;
 
-  const annotatedUrl = resolveAssetUrl(detection.annotated_image);
-  const dets = detection.detections || [];
-  const count = detection.building_count ?? dets.length;
-  const avg = detection.average_confidence ?? 0;
+  const annotatedUrl = resolveAssetUrl((features || detection)?.annotated_image);
+  const dets = detection?.detections || [];
+  const count = detection?.building_count ?? dets.length;
+  const avg = detection?.average_confidence ?? 0;
+  const fcounts = features?.counts || {};
+  const freasons = features?.reasons || {};
+  const fmap = features?.features || {};
 
   return (
     <section className="card detect-section">
-      <div className="detect-head">
-        <div>
-          <h2>4 · AI Building Detection (YOLO)</h2>
-          <p className="sub">
-            Model <b>{detection.model?.name}</b> ({detection.model?.type}) ·{' '}
-            {count} building(s) · avg confidence {Number(avg).toFixed(2)} ·{' '}
-            {detection.image_width}×{detection.image_height}px
-          </p>
-        </div>
-        <div className="detect-badges">
-          <span className="badge">🏠 {count} buildings</span>
-          <span className="badge">🎯 {Number(avg).toFixed(2)} avg conf</span>
-        </div>
-      </div>
+      {detection && (
+        <>
+          <div className="detect-head">
+            <div>
+              <h2>4 · AI Building Detection (YOLO)</h2>
+              <p className="sub">
+                Model <b>{detection.model?.name}</b> ({detection.model?.type}) ·{' '}
+                {count} building(s) · avg confidence {Number(avg).toFixed(2)} ·{' '}
+                {detection.image_width}×{detection.image_height}px
+              </p>
+            </div>
+            <div className="detect-badges">
+              <span className="badge">{count} buildings</span>
+              <span className="badge">{Number(avg).toFixed(2)} avg conf</span>
+            </div>
+          </div>
 
-      {detection.warning && <p className="warn-box">{detection.warning}</p>}
+          {detection.warning && <p className="warn-box">{detection.warning}</p>}
 
-      <div className="detect-grid">
-        <figure>
-          <figcaption>Original image</figcaption>
-          {originalPreview
-            ? <img src={originalPreview} alt="Original uploaded drone view" />
-            : <p className="mono">Original preview not available (re-select the file).</p>}
-        </figure>
-        <figure>
-          <figcaption>AI-detected image (outputs/)</figcaption>
-          {annotatedUrl
-            ? <img src={annotatedUrl} alt="Annotated detections with building boxes" />
-            : <p className="mono">Annotated image URL missing.</p>}
-          {detection.annotated_image && (
-            <p className="mono">{detection.annotated_image}</p>
+          <div className="detect-grid">
+            <figure>
+              <figcaption>Original image</figcaption>
+              {originalPreview
+                ? <img src={originalPreview} alt="Original uploaded drone view" />
+                : <p className="mono">Original preview not available (re-select the file).</p>}
+            </figure>
+            <figure>
+              <figcaption>AI-detected image (outputs/)</figcaption>
+              {annotatedUrl && !features
+                ? <img src={annotatedUrl} alt="Annotated detections with building boxes" />
+                : !features && <p className="mono">Annotated image URL missing.</p>}
+              {detection.annotated_image && !features && (
+                <p className="mono">{detection.annotated_image}</p>
+              )}
+            </figure>
+          </div>
+
+          {dets.length > 0 ? (
+            <div className="table-wrap">
+              <table className="det-table">
+                <thead>
+                  <tr><th>#</th><th>Class</th><th>Confidence</th><th>BBox [x1, y1, x2, y2]</th></tr>
+                </thead>
+                <tbody>
+                  {dets.map((d, i) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td>{d.class}</td>
+                      <td>{Number(d.confidence).toFixed(3)}</td>
+                      <td className="mono">[{d.bbox.join(', ')}]</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mono">
+              No building-class boxes above threshold. Raw YOLO output
+              ({detection.total_detections ?? 0} total) is preserved in the response
+              as <b>all_detections</b> with real class names.
+            </p>
           )}
-        </figure>
-      </div>
+        </>
+      )}
 
-      {dets.length > 0 ? (
-        <div className="table-wrap">
-          <table className="det-table">
-            <thead>
-              <tr><th>#</th><th>Class</th><th>Confidence</th><th>BBox [x1, y1, x2, y2]</th></tr>
-            </thead>
-            <tbody>
-              {dets.map((d, i) => (
-                <tr key={i}>
-                  <td>{i + 1}</td>
-                  <td>{d.class}</td>
-                  <td>{Number(d.confidence).toFixed(3)}</td>
-                  <td className="mono">[{d.bbox.join(', ')}]</td>
-                </tr>
+      {features && (
+        <div className="features-block">
+          <div className="detect-head">
+            <div>
+              <h2>{detection ? '5' : '4'} · Feature Extraction Pipeline</h2>
+              <p className="sub">
+                POST /detect/features · {features.image_width}×{features.image_height}px ·
+                model {features.model?.loaded ? `${features.model.name} (${features.model.type})` : 'unavailable (classical segmentation only)'}
+              </p>
+            </div>
+            <div className="detect-badges">
+              {FEATURE_ORDER.map((k) => (
+                <span key={k} className="badge">{k}: {fcounts[k] ?? 0}</span>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          {(features.warnings || []).map((w, i) => (
+            <p key={i} className="warn-box">{w}</p>
+          ))}
+
+          <div className="detect-grid">
+            <figure>
+              <figcaption>Original image</figcaption>
+              {originalPreview
+                ? <img src={originalPreview} alt="Original uploaded drone view" />
+                : <p className="mono">Original preview not available (re-select the file).</p>}
+            </figure>
+            <figure>
+              <figcaption>Feature-annotated image (outputs/)</figcaption>
+              {annotatedUrl
+                ? <img src={annotatedUrl} alt="Feature-annotated image with per-class boxes" />
+                : <p className="mono">Annotated image URL missing.</p>}
+              {features.annotated_image && <p className="mono">{features.annotated_image}</p>}
+            </figure>
+          </div>
+
+          {FEATURE_ORDER.map((k) => {
+            const items = fmap[k] || [];
+            if (items.length === 0) {
+              return freasons[k] ? <p key={k} className="mono">{k}: 0 — {freasons[k]}</p> : null;
+            }
+            const shown = items.slice(0, ROW_CAP);
+            return (
+              <div key={k}>
+                <h3 className="feat-type">{k} ({items.length})</h3>
+                <div className="table-wrap">
+                  <table className="det-table">
+                    <thead>
+                      <tr><th>#</th><th>Class</th><th>Confidence</th><th>BBox [x1, y1, x2, y2]</th><th>Method</th></tr>
+                    </thead>
+                    <tbody>
+                      {shown.map((d, i) => (
+                        <tr key={i}>
+                          <td>{i + 1}</td>
+                          <td>{d.class}</td>
+                          <td>{Number(d.confidence).toFixed(3)}</td>
+                          <td className="mono">[{d.bbox.join(', ')}]</td>
+                          <td className="mono">{d.method}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {items.length > ROW_CAP && (
+                  <p className="mono">…and {items.length - ROW_CAP} more {k} regions — see the map layers.</p>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <p className="mono">
-          No building-class boxes above threshold. Raw YOLO output
-          ({detection.total_detections ?? 0} total) is preserved in the response
-          as <b>all_detections</b> with real class names.
-        </p>
       )}
     </section>
   );
