@@ -19,13 +19,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from services.detection import (
-    get_model_status,
-    load_model,
-    run_detection,
-    annotate_image,
-    REQUIRED_MODEL_MESSAGE,
-)
+try:
+    from services.detection import (
+        get_model_status,
+        load_model,
+        run_detection,
+        annotate_image,
+        REQUIRED_MODEL_MESSAGE,
+    )
+except ImportError:  # allow `uvicorn backend.main:app` from the project root
+    from backend.services.detection import (
+        get_model_status,
+        load_model,
+        run_detection,
+        annotate_image,
+        REQUIRED_MODEL_MESSAGE,
+    )
 
 # ---------------------------------------------------------------------------
 # Paths

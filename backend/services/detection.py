@@ -184,9 +184,6 @@ def load_model() -> Dict[str, Any]:
             yolo = YOLO(weight)
             names: Dict[int, str] = dict(getattr(yolo, "names", {}) or {})
             _model = yolo
-            # Record a friendly path: local file name, else the fallback id.
-            if Path(str(weight)).is_file() if not str(weight).endswith(".pt") else True:
-                pass
             try:
                 _model_path = str(Path(weight).resolve()) if Path(weight).is_file() else str(weight)
             except Exception:
@@ -299,8 +296,6 @@ def run_detection(
     try:
         boxes = r0.boxes
         if boxes is not None and len(boxes) > 0:
-            import torch  # noqa: F401  (ensures tensor .tolist() path works)
-
             for box in boxes:
                 xyxy = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
                 cls_id = int(box.cls[0].tolist())
@@ -378,7 +373,7 @@ def annotate_image(
 
             with Image.open(image_path) as pil:
                 rgb = pil.convert("RGB")
-                arr = __import__("numpy").asarray(rgb)
+                arr = np.asarray(rgb)
                 img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
         except Exception as exc:
             raise RuntimeError(f"Could not read image for annotation: {exc}")
