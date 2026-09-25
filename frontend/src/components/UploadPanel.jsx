@@ -63,6 +63,7 @@ export default function UploadPanel({
   setFeaturesError,
   isExtracting,
   setIsExtracting,
+  recordTiming,
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -188,8 +189,15 @@ export default function UploadPanel({
     setMessage('Uploading…');
     setMessageOk(false);
     setUploaded(null);
+    const t0 = performance.now();
     try {
       const res = await uploadImage(file, setProgress);
+      recordTiming?.('upload', performance.now() - t0, {
+        filename: res.filename || file.name,
+        width: res.width,
+        height: res.height,
+        size_bytes: res.size_bytes ?? file.size,
+      });
       setBackendStatus('ok');
       setUploaded(res);
       setMessage(`Saved as ${res.filename} — ${res.width}×${res.height} px, ${formatBytes(res.size_bytes)}.`);
@@ -227,6 +235,7 @@ export default function UploadPanel({
     setFeaturesError?.(null);
     setMessage(isFeatures ? 'Running feature-extraction pipeline…' : 'Running YOLO building detection… (first run may take a while)');
     setMessageOk(false);
+    const t0 = performance.now();
     try {
       const res = isFeatures
         ? await detectFeatures(file, { confidence })
@@ -248,6 +257,7 @@ export default function UploadPanel({
         );
       }
       setMessageOk(true);
+      recordTiming?.(isFeatures ? 'features' : 'buildings', performance.now() - t0);
       await refreshStatuses();
     } catch (err) {
       const status = err.response?.status;
@@ -289,8 +299,10 @@ export default function UploadPanel({
     setParcelError?.(null);
     setMessage('Extracting approximate parcel polygons… (preprocessing → segmentation → contours)');
     setMessageOk(false);
+    const t0 = performance.now();
     try {
       const res = await extractParcels(file, { gsd, epsilon: 0.012, conf: confidence });
+      recordTiming?.('parcels', performance.now() - t0);
       setParcelResult?.(res);
       setBackendStatus('ok');
       setMessage(`Extracted ${res.parcel_count} approximate parcel(s) via ${res.method}. Annotated: ${res.annotated_image}`);

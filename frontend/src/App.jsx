@@ -7,6 +7,7 @@ import DetectionResults from './components/DetectionResults.jsx';
 import ParcelResults from './components/ParcelResults.jsx';
 import ParcelDetail from './components/ParcelDetail.jsx';
 import SummaryStats from './components/SummaryStats.jsx';
+import ReportModal from './components/ReportModal.jsx';
 import './App.css';
 
 export default function App() {
@@ -27,10 +28,19 @@ export default function App() {
   const [isExtracting, setIsExtracting] = useState(false);
   // Parcel selected on the map (popup + sidebar details).
   const [selectedParcelId, setSelectedParcelId] = useState(null);
+  // Client-measured run timings (ms) + uploaded file info for the report.
+  const [timings, setTimings] = useState({});
+  const [uploadedInfo, setUploadedInfo] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const selectParcel = (id) => setSelectedParcelId(id);
+  const recordTiming = (key, ms, extra) => {
+    setTimings((prev) => ({ ...prev, [key]: ms }));
+    if (extra?.filename) setUploadedInfo(extra);
+  };
 
   return (
+    <>
     <div className="app">
       <Navbar backendStatus={backendStatus} />
       <main className="layout">
@@ -49,6 +59,7 @@ export default function App() {
           setParcelError={setParcelError}
           isExtracting={isExtracting}
           setIsExtracting={setIsExtracting}
+          recordTiming={recordTiming}
         />
         <MapView
           parcelResult={parcelResult}
@@ -91,6 +102,7 @@ export default function App() {
         isExtracting={isExtracting}
         selectedParcelId={selectedParcelId}
         onSelectParcel={selectParcel}
+        onGenerateReport={() => setReportOpen(true)}
       />
       <SummaryStats
         parcelResult={parcelResult}
@@ -102,5 +114,17 @@ export default function App() {
         <span>React + Leaflet · FastAPI · YOLO-seg / watershed / colour segmentation</span>
       </footer>
     </div>
+      {reportOpen && parcelResult && (
+        <ReportModal
+          parcelResult={parcelResult}
+          detection={detection}
+          features={features}
+          timings={timings}
+          uploadedInfo={uploadedInfo}
+          originalPreview={originalPreview}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
+    </>
   );
 }

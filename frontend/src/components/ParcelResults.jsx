@@ -6,7 +6,7 @@ import { resolveAssetUrl } from '../services/api.js';
  * POST /detect/parcels response — nothing hardcoded. Always discloses
  * that boundaries are AI-estimated/approximate, not legal cadastre.
  */
-export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, selectedParcelId, onSelectParcel }) {
+export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, selectedParcelId, onSelectParcel, onGenerateReport }) {
   if (isExtracting) {
     return (
       <section className="card detect-section">
@@ -77,8 +77,11 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
       </div>
 
       <div className="parcel-actions">
+        <button className="btn small" onClick={onGenerateReport}>
+          Generate Report
+        </button>
         {geojsonUrl && (
-          <a className="btn small link-btn" href={geojsonUrl} download>
+          <a className="btn small link-btn ghost" href={geojsonUrl} download>
             Download GeoJSON (image-pixel polygons)
           </a>
         )}
