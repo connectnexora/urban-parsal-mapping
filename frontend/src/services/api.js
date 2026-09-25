@@ -37,14 +37,11 @@ export async function getModelStatus() {
   return res.data;
 }
 
-<<<<<<< HEAD
 export async function getParcelStatus() {
   const res = await client.get('/detect/parcel-status');
   return res.data;
 }
 
-=======
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
 export async function uploadImage(file, onProgress) {
   const form = new FormData();
   // Third arg preserves the original filename in the multipart payload.
@@ -81,7 +78,6 @@ export async function detectBuildings(file, { confidence = 0.25, iou = 0.45 } = 
 }
 
 /**
-<<<<<<< HEAD
  * Extract approximate parcel polygons.
  * POST /detect/parcels with multipart `file` (+ `gsd`, `epsilon`, `conf`,
  * `max_parcels`). Returns:
@@ -97,7 +93,12 @@ export async function extractParcels(
   form.append('file', file, file.name);
   const res = await parcelClient.post('/detect/parcels', form, {
     params: { gsd, epsilon, conf, max_parcels: maxParcels },
-=======
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+/**
  * Run the full feature-extraction pipeline.
  * POST /detect/features with multipart `file` (+ optional query
  * `confidence`, `iou`). Returns { features: {buildings, roads, vegetation,
@@ -107,21 +108,16 @@ export async function extractParcels(
  */
 export async function detectFeatures(file, { confidence = 0.25, iou = 0.45 } = {}) {
   const form = new FormData();
-  form.append('file', file);
+  form.append('file', file, file.name);
   const res = await detectClient.post('/detect/features', form, {
     params: { confidence, iou },
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
 }
 
-<<<<<<< HEAD
 /** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL. */
 export function resolveAssetUrl(path) {
-=======
-/** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL. */export function resolveAssetUrl(path) {
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;

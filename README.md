@@ -3,7 +3,7 @@
 Hackathon prototype: **Drone/Aerial Image → Upload → AI Analysis → Buildings + Approximate Parcels → Boundaries → Area → Interactive Map → Report**.
 
 > AI Went live: YOLO building detection (`POST /detect/buildings`) and
-> approximate parcel polygons (`POST /detect/parcels`) run real inference.
+> approximate parcel polygons (`POST /detect/parcels`) and multi-class features (`POST /detect/features`) run real inference.
 > Parcel boundaries are **AI-estimated/approximate — NOT legally valid
 > cadastral boundaries**.
 
@@ -104,7 +104,7 @@ Open the printed URL (default http://localhost:5173).
    watershed/contours) → boundary extraction → `approxPolyDP` simplification →
    area/perimeter estimates via GSD. Returns
    `parcels:[{parcel_id, area, perimeter, confidence, polygon}]` plus annotated
-   image + GeoJSON in `outputs/`, overlaid as schematic polygons on the map.
+   image + GeoJSON in `outputs/`, overlaid as schematic polygons on the map.6. **Process Image \(AI Features\)** ? `POST /detect/features` returns `features:{buildings, roads, vegetation, water, other}` with per-item class/confidence/geometry plus annotated image; empty categories stay empty with reasons.
    Everywhere labelled **AI-estimated/approximate, NOT legal cadastre**.
 
 ## Segmentation models

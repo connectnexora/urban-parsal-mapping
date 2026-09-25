@@ -42,7 +42,9 @@ export default function DetectionResults({
 
   if (!detection && !features) return null;
 
-  const annotatedUrl = resolveAssetUrl((features || detection)?.annotated_image);
+  const detUrl = resolveAssetUrl(detection?.annotated_image);
+  const featUrl = resolveAssetUrl(features?.annotated_image);
+  const annotatedUrl = featUrl || detUrl;
   const dets = detection?.detections || [];
   const count = detection?.building_count ?? dets.length;
   const avg = detection?.average_confidence ?? 0;
@@ -80,10 +82,10 @@ export default function DetectionResults({
             </figure>
             <figure>
               <figcaption>AI-detected image (outputs/)</figcaption>
-              {annotatedUrl && !features
-                ? <img src={annotatedUrl} alt="Annotated detections with building boxes" />
-                : !features && <p className="mono">Annotated image URL missing.</p>}
-              {detection.annotated_image && !features && (
+              {detUrl
+                ? <img src={detUrl} alt="Annotated detections with building boxes" />
+                : <p className="mono">Annotated image URL missing.</p>}
+              {detection.annotated_image && (
                 <p className="mono">{detection.annotated_image}</p>
               )}
             </figure>
@@ -147,8 +149,8 @@ export default function DetectionResults({
             </figure>
             <figure>
               <figcaption>Feature-annotated image (outputs/)</figcaption>
-              {annotatedUrl
-                ? <img src={annotatedUrl} alt="Feature-annotated image with per-class boxes" />
+              {featUrl
+                ? <img src={featUrl} alt="Feature-annotated image with per-class boxes" />
                 : <p className="mono">Annotated image URL missing.</p>}
               {features.annotated_image && <p className="mono">{features.annotated_image}</p>}
             </figure>

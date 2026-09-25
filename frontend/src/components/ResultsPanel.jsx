@@ -1,33 +1,23 @@
-<<<<<<< HEAD
-export default function ResultsPanel({ backendStatus, healthData, detection, parcelResult }) {
-=======
-export default function ResultsPanel({ backendStatus, healthData, detection, features }) {
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+export default function ResultsPanel({ backendStatus, healthData, detection, features, parcelResult }) {
   const dot = backendStatus === 'ok' ? 'dot ok' : backendStatus === 'down' ? 'dot bad' : 'dot';
   const label =
     backendStatus === 'ok' ? 'Backend: connected' : backendStatus === 'down' ? 'Backend: offline' : 'Backend: not tested';
 
-<<<<<<< HEAD
-  const hasDet = detection != null;
-  const buildings = hasDet ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
-  const avgConf = hasDet ? (detection.average_confidence ?? 0).toFixed(2) : '—';
-  const hasParcels = parcelResult != null;
-  const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
-  const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
-=======
   const hasResult = detection != null;
   const hasFeatures = features != null;
+  const hasParcels = parcelResult != null;
   const buildings = hasResult ? (detection.building_count ?? detection.detections?.length ?? 0) : '—';
   const avgConf = hasResult ? (detection.average_confidence ?? 0).toFixed(2) : '—';
   const total = hasResult ? (detection.total_detections ?? detection.all_detections?.length ?? '—') : '—';
   const modelName = hasResult ? detection.model?.name || detection.model_name || '—' : '—';
   const counts = features?.counts || {};
->>>>>>> 9eda01f47b9656667c8a9f396762fe912c12f763
+  const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
+  const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
 
   return (
     <section className="card">
       <h2>3 · Results</h2>
-      <p className="sub">Live AI values appear here after detection / parcel runs.</p>
+      <p className="sub">Live AI values appear here after detection / parcel / feature runs.</p>
 
       <div className="status-row">
         <span className={dot} />
@@ -46,15 +36,21 @@ export default function ResultsPanel({ backendStatus, healthData, detection, fea
         <div className="stat"><div className="v" style={{ fontSize: 16 }}>{totalArea}</div><div className="l">Total area m² (est.)</div></div>
       </div>
 
-      {!hasDet && !hasParcels ? (
+      <div className="stats" style={{ marginTop: 10 }}>
+        <div className="stat"><div className="v">{total}</div><div className="l">Total detections</div></div>
+        <div className="stat"><div className="v mono" style={{ fontSize: 12 }}>{modelName}</div><div className="l">Model</div></div>
+      </div>
+
+      {!hasResult && !hasFeatures && !hasParcels ? (
         <p className="mono" style={{ marginTop: 12 }}>
           No fake AI results are shown. Counters stay blank until real inference runs.
         </p>
       ) : (
         <div style={{ marginTop: 12 }}>
-          {hasDet && (
+          {hasResult && (
             <p className="mono">
-              Buildings: {detection.image_width}×{detection.image_height}px · {detection.annotated_image}
+              Image: {detection.image_width}×{detection.image_height}px ·{' '}
+              {detection.annotated_image}
             </p>
           )}
           {hasParcels && (
@@ -62,7 +58,9 @@ export default function ResultsPanel({ backendStatus, healthData, detection, fea
               Parcels ({parcelResult.method}): {parcelResult.annotated_image} · {parcelResult.geojson_file}
             </p>
           )}
-          {detection?.warning && <p className="warn-box">{detection.warning}</p>}
+          {detection?.warning && (
+            <p className="warn-box">{detection.warning}</p>
+          )}
           {hasParcels && <p className="warn-box">{parcelResult.disclaimer}</p>}
         </div>
       )}
