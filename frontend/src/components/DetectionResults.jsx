@@ -11,9 +11,9 @@ const ROW_CAP = 15;
  */
 export default function DetectionResults({
   detection, error, originalPreview, isDetecting,
-  features, featuresError, isExtracting,
+  features, featuresError, isExtracting, extractKind,
 }) {
-  if (isDetecting || isExtracting) {
+  if (isDetecting || (isExtracting && extractKind === 'features')) {
     return (
       <section className="card detect-section">
         <h2>4 · AI Detection</h2>

@@ -23,6 +23,8 @@ export default function App() {
   const [parcelResult, setParcelResult] = useState(null);
   const [parcelError, setParcelError] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  // Which extraction is running: 'features' | 'parcels' | null.
+  const [extractKind, setExtractKind] = useState(null);
 
   return (
     <div className="app">
@@ -43,6 +45,8 @@ export default function App() {
           setFeaturesError={setFeaturesError}
           isExtracting={isExtracting}
           setIsExtracting={setIsExtracting}
+          extractKind={extractKind}
+          setExtractKind={setExtractKind}
         />
         <MapView parcelResult={parcelResult} featureResult={features} overlayUrl={originalPreview} />
         <ResultsPanel
@@ -61,12 +65,15 @@ export default function App() {
         features={features}
         featuresError={featuresError}
         isExtracting={isExtracting}
+        extractKind={extractKind}
       />
       <ParcelResults
         parcelResult={parcelResult}
         error={parcelError}
         originalPreview={originalPreview}
         isExtracting={isExtracting}
+        extractKind={extractKind}
+        stepNo={detection || features ? 4 + (detection ? 1 : 0) + (features ? 1 : 0) : 5}
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>

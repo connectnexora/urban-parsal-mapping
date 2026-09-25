@@ -6,11 +6,12 @@ import { resolveAssetUrl } from '../services/api.js';
  * POST /detect/parcels response — nothing hardcoded. Always discloses
  * that boundaries are AI-estimated/approximate, not legal cadastre.
  */
-export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting }) {
-  if (isExtracting) {
+export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, extractKind, stepNo = 5 }) {
+  const running = isExtracting && extractKind === 'parcels';
+  if (running) {
     return (
       <section className="card detect-section">
-        <h2>5 · AI Parcel Boundaries (approximate)</h2>
+        <h2>{stepNo} · AI Parcel Boundaries (approximate)</h2>
         <p className="sub">Preprocessing → segmentation → boundary extraction → polygons…</p>
         <div className="progress-bar"><div className="progress-fill anim" /></div>
       </section>
@@ -20,7 +21,7 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
   if (error && !parcelResult) {
     return (
       <section className="card detect-section">
-        <h2>5 · AI Parcel Boundaries (approximate)</h2>
+        <h2>{stepNo} · AI Parcel Boundaries (approximate)</h2>
         <p className="warn-box">{error}</p>
       </section>
     );
@@ -36,7 +37,7 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
     <section className="card detect-section">
       <div className="detect-head">
         <div>
-          <h2>5 · AI Parcel Boundaries — approximate, NOT legal cadastre</h2>
+          <h2>{stepNo} · AI Parcel Boundaries — approximate, NOT legal cadastre</h2>
           <p className="sub">
             Method <b>{parcelResult.method}</b> · {parcelResult.parcel_count} parcel(s) ·{' '}
             total ~{parcelResult.total_area_estimated_m2} m² · avg conf {Number(parcelResult.average_confidence ?? 0).toFixed(2)} ·{' '}

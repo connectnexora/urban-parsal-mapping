@@ -63,6 +63,8 @@ export default function UploadPanel({
   setFeaturesError,
   isExtracting,
   setIsExtracting,
+  extractKind,
+  setExtractKind,
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -77,8 +79,6 @@ export default function UploadPanel({
   const [parcelStatus, setParcelStatus] = useState(null);
   const [confidence, setConfidence] = useState(0.25);
   const [gsd, setGsd] = useState(0.1);
-  // Which extraction is running: 'features' | 'parcels' | null.
-  const [extractKind, setExtractKind] = useState(null);
   const urlRef = useRef(null);
 
   useEffect(() => () => {
