@@ -107,6 +107,28 @@ Open the printed URL (default http://localhost:5173).
    image + GeoJSON in `outputs/`, overlaid as schematic polygons on the map.6. **Process Image \(AI Features\)** ? `POST /detect/features` returns `features:{buildings, roads, vegetation, water, other}` with per-item class/confidence/geometry plus annotated image; empty categories stay empty with reasons.
    Everywhere labelled **AI-estimated/approximate, NOT legal cadastre**.
 
+## Demo Dataset (DEMO MODE)
+
+No backend or drone footage handy? Click **Demo Dataset** (navbar, or "Try Demo Dataset" in the upload panel).
+
+- Loads a prepared synthetic aerial scene (`frontend/public/demo/demo-aerial.png`, 960x640, GSD 0.5 m/px).
+- Plays a short staged loading sequence, then displays **precomputed** results:
+  6 parcel polygons, 8 building detections, 16 multi-class features, statistics,
+  map overlays, comparison slider and a working Generate-Report flow.
+- Everything is labelled **DEMO MODE — precomputed**. No backend calls run;
+  the live AI pipeline is untouched, and demo numbers are never presented as
+  live inference.
+
+Regenerate the dataset any time (zero dependencies, runs on node):
+
+```powershell
+node tools/make-demo-scene.mjs
+```
+
+This rewrites `frontend/public/demo/*.png` and `frontend/src/data/demoResults.js`
+from a single seeded generator, so image geometry and precomputed results
+always match.
+
 ## Segmentation models
 
 - Preferred when present: `models/*-seg.pt` (YOLO-seg, e.g. custom

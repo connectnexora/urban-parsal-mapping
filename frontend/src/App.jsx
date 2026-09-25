@@ -11,6 +11,8 @@ import ReportModal from './components/ReportModal.jsx';
 import CompareView from './components/CompareView.jsx';
 import ChangeView from './components/ChangeView.jsx';
 import BootScreen from './components/BootScreen.jsx';
+import DemoBanner from './components/DemoBanner.jsx';
+import { DEMO_DETECTION, DEMO_PARCELS, DEMO_FEATURES, DEMO_META } from './data/demoResults.js';
 import './App.css';
 
 export default function App() {
@@ -40,6 +42,11 @@ export default function App() {
   const [uploadedInfo, setUploadedInfo] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [booted, setBooted] = useState(false);
+  // Controlled demo mode: 'off' | 'loading' | 'active'. Demo data is
+  // precomputed and only fills display state — never the live pipeline.
+  const [demoMode, setDemoMode] = useState('off');
+  const [demoStage, setDemoStage] = useState('');
+  const [demoError, setDemoError] = useState(null);
 
   const selectParcel = (id) => setSelectedParcelId(id);
   const recordTiming = (key, ms, extra) => {
@@ -47,10 +54,80 @@ export default function App() {
     if (extra?.filename) setUploadedInfo(extra);
   };
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const enterDemo = async () => {
+    if (demoMode !== 'off' || isDetecting || isExtracting) return;
+    setDemoMode('loading');
+    setDemoError(null);
+    setIsExtracting(true);
+    try {
+      const abs = (p) => `${window.location.origin}/${String(p || '').replace(/^\//, '')}`;
+      setDemoStage('Loading prepared demo image…');
+      const imgUrl = abs('demo/demo-aerial.png');
+      const annUrl = abs('demo/demo-aerial-annotated.png');
+      const resp = await fetch(imgUrl);
+      if (!resp.ok) {
+        throw new Error(
+          `Demo image not found (HTTP ${resp.status}). Regenerate it with: node tools/make-demo-scene.mjs`,
+        );
+      }
+      const blob = await resp.blob();
+      setOriginalPreview(imgUrl);
+      setDemoStage('Replaying precomputed AI results (no live inference)…');
+      await sleep(900);
+      const withAnn = (o) => ({ ...o, annotated_image: annUrl });
+      setDetection(withAnn(DEMO_DETECTION));
+      setFeatures(withAnn(DEMO_FEATURES));
+      setParcelResult(withAnn(DEMO_PARCELS));
+      setDetectionError(null);
+      setFeaturesError(null);
+      setParcelError(null);
+      setUploadedInfo({
+        filename: 'demo-aerial.png',
+        width: DEMO_META.image.width,
+        height: DEMO_META.image.height,
+        size_bytes: blob.size,
+      });
+      setTimings({});
+      setDemoStage('Rendering parcels, detections and map…');
+      await sleep(700);
+      setDemoMode('active');
+    } catch (err) {
+      setDemoError(err.message || 'Could not load the demo dataset.');
+      setDemoMode('off');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const exitDemo = () => {
+    setDemoMode('off');
+    setDemoStage('');
+    setDemoError(null);
+    setDetection(null);
+    setDetectionError(null);
+    setFeatures(null);
+    setFeaturesError(null);
+    setParcelResult(null);
+    setParcelError(null);
+    setOriginalPreview(null);
+    setSelectedParcelId(null);
+    setTimings({});
+    setUploadedInfo(null);
+    setReportOpen(false);
+  };
+
   return (
     <>
     <div className="app">
-      <Navbar backendStatus={backendStatus} />
+      <Navbar
+        backendStatus={backendStatus}
+        demoMode={demoMode}
+        onEnterDemo={enterDemo}
+        onExitDemo={exitDemo}
+        busy={isDetecting || isExtracting}
+      />
       <main className="layout">
         <UploadPanel
           backendStatus={backendStatus}
@@ -68,6 +145,8 @@ export default function App() {
           isExtracting={isExtracting}
           setIsExtracting={setIsExtracting}
           recordTiming={recordTiming}
+          demoMode={demoMode}
+          onEnterDemo={enterDemo}
         />
         <MapView
           parcelResult={parcelResult}
@@ -86,6 +165,18 @@ export default function App() {
           parcelResult={parcelResult}
         />
       </main>
+      <DemoBanner
+        mode={demoMode}
+        stage={demoStage}
+        error={demoError}
+        meta={DEMO_META}
+        counts={{
+          parcels: DEMO_PARCELS.parcel_count,
+          buildings: DEMO_DETECTION.building_count,
+          features: DEMO_FEATURES.counts.total,
+        }}
+        onExit={exitDemo}
+      />
       {selectedParcelId && (
         <ParcelDetail
           parcelResult={parcelResult}

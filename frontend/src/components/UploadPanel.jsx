@@ -64,6 +64,8 @@ export default function UploadPanel({
   isExtracting,
   setIsExtracting,
   recordTiming,
+  demoMode,
+  onEnterDemo,
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -426,6 +428,9 @@ export default function UploadPanel({
       </button>
       <button className="btn ghost" onClick={testConnection} disabled={aiBusy}>
         Test Backend Connection
+      </button>
+      <button className="btn ghost" onClick={onEnterDemo} disabled={aiBusy || demoMode !== 'off'} title="Load the prepared demo dataset (precomputed results)">
+        {demoMode === 'loading' ? 'Loading demo…' : demoMode === 'active' ? 'Demo active ✓' : 'Try Demo Dataset'}
       </button>
 
       {uploaded && (

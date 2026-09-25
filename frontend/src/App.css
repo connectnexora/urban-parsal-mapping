@@ -19,6 +19,23 @@
   font-size: 12px; padding: 6px 12px; border-radius: 999px;
   border: 1px solid var(--card-border); background: var(--card); color: var(--muted);
 }
+.nav-pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+button.pill-btn {
+  cursor: pointer; font: inherit; color: var(--text);
+}
+button.pill-btn:hover:not(:disabled) { border-color: var(--accent); }
+button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pill-demo {
+  border-color: rgba(167, 139, 250, 0.6);
+  background: rgba(167, 139, 250, 0.14);
+  color: var(--text); font-weight: 700;
+}
+.badge-demo {
+  background: rgba(167, 139, 250, 0.14);
+  border: 1px solid rgba(167, 139, 250, 0.55);
+}
+.demo-banner { border-color: rgba(167, 139, 250, 0.5); }
+.demo-banner h2 { color: #c4b5fd; }
 
 .layout {
   display: grid; grid-template-columns: 360px 1fr 300px; gap: 18px;
