@@ -1,14 +1,10 @@
-<<<<<<< HEAD
+# Node
 node_modules/
+frontend/node_modules/
+frontend/dist/
 dist/
 dist-ssr/
 *.local
-.DS_Store
-Thumbs.db
-=======
-# Node
-frontend/node_modules/
-frontend/dist/
 
 # Python
 backend/__pycache__/
@@ -35,11 +31,18 @@ data/samples/*.jpg
 data/samples/*.png
 !data/samples/.gitkeep
 
-# Outputs
+# Outputs (generated annotated images, maps, reports)
+outputs/*.jpg
+outputs/*.jpeg
+outputs/*.png
+outputs/*.tif
+outputs/*.tiff
+outputs/*.json
 outputs/reports/*
 !outputs/reports/.gitkeep
 outputs/maps/*
 !outputs/maps/.gitkeep
+!outputs/README.md
 
 # OS / editors
 .DS_Store
@@ -48,4 +51,3 @@ Thumbs.db
 .idea/
 *.log
 .env
->>>>>>> 3bb33563eae14bc9c26ad0c1b33fe212027912d5
