@@ -143,10 +143,14 @@ Open the printed URL (default http://localhost:5173).
 3. Or bypass the UI:
    - `curl http://localhost:8000/api/health`
    - Frontend `API: http://localhost:8000` label shows which backend it targets.
-4. Upload test: choose any JPG/PNG → **Upload to Backend** →
-   backend saves it under `data/uploads/` and replies
+4. Upload test: choose any JPG/PNG/TIF → panel validates type + size,
+   shows preview (JPG/PNG), file name, dimensions and size, then
+   **Upload to Backend** (with live progress bar) →
+   backend validates, saves under `data/uploads/` and replies
+   `filename, width, height, size_bytes, status: "uploaded"`.
+   **Process Image** then queues the file and honestly reports
    `"AI analysis is not implemented yet"` with `detections: null`
-   (deliberately no fake boxes).
+   (deliberately no fake boxes, no inference runs).
 
 ## What's next (Step 2)
 
