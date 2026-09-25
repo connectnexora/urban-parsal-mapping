@@ -1,0 +1,27 @@
+:root {
+  --bg: #0b1220;
+  --bg-soft: #111a2e;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-border: rgba(255, 255, 255, 0.12);
+  --text: #eef2ff;
+  --muted: #9aa7c2;
+  --accent: #38bdf8;
+  --accent-2: #a78bfa;
+  --success: #34d399;
+  --danger: #f87171;
+  --warning: #fbbf24;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.18), transparent),
+    radial-gradient(900px 500px at 10% 0%, rgba(167, 139, 250, 0.16), transparent),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#root { min-height: 100vh; }
