@@ -1,24 +1,24 @@
 """
 AI-Based Automated Urban Parcel Mapping and Cadastral Feature Extraction
-FastAPI backend — STEP 2: YOLO-based building detection.
+FastAPI backend — STEP 3: multi-class feature-extraction pipeline.
 
 - Model is loaded SAFELY once at startup (never crashes the server when the
-  weight file is missing — endpoints then return HTTP 503 with instructions).
-- POST /detect/buildings accepts a drone image, runs real YOLO inference
-  (no hardcoded boxes), returns structured JSON + saves an annotated image
-  under outputs/ served at /outputs/<file>.
+  weight file is missing — YOLO-dependent categories then come back EMPTY
+  with reasons instead of fake boxes).
+- POST /upload: validate + save, return filename/dimensions/size/status.
+- POST /detect/buildings: YOLO building-only detection + annotated image.
+- POST /detect/features: full pipeline -> features{buildings, roads,
+  vegetation, water, other} with class/confidence/geometry per feature,
+  plus an annotated image under outputs/ served at /outputs/<file>.
+- Vegetation/water come from classical colour segmentation (no model
+  needed). Roads need a road-capable model; otherwise honestly empty.
 """
 
-<<<<<<< HEAD
 from contextlib import asynccontextmanager
-from datetime import datetime
-from pathlib import Path
-=======
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 import uuid
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
@@ -34,6 +34,12 @@ try:
         annotate_image,
         REQUIRED_MODEL_MESSAGE,
     )
+    from services.features import (
+        extract_features,
+        annotate_features,
+        FEATURE_TYPES,
+        FEATURE_COLORS_HEX,
+    )
 except ImportError:  # allow `uvicorn backend.main:app` from the project root
     from backend.services.detection import (
         get_model_status,
@@ -41,6 +47,12 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
         run_detection,
         annotate_image,
         REQUIRED_MODEL_MESSAGE,
+    )
+    from backend.services.features import (
+        extract_features,
+        annotate_features,
+        FEATURE_TYPES,
+        FEATURE_COLORS_HEX,
     )
 
 from PIL import Image, UnidentifiedImageError
@@ -57,8 +69,10 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
-<<<<<<< HEAD
-APP_VERSION = "0.2.0"
+# Prototype cap — drone frames are big, but bound memory per request.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
+APP_VERSION = "0.3.0"
 
 
 # ---------------------------------------------------------------------------
@@ -76,21 +90,18 @@ async def lifespan(app: FastAPI):
         print(f"[startup] model load failed (non-fatal): {exc}")
     yield
 
-=======
-# Prototype cap — drone frames are big, but bound memory per request.
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
 
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Urban Parcel Mapping API",
-    description="Drone imagery -> YOLO building detection -> annotated outputs.",
+    description="Drone imagery -> multi-class feature extraction -> annotated outputs.",
     version=APP_VERSION,
     lifespan=lifespan,
 )
 
+# Allow the Vite React dev server to call the API from the browser.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -109,103 +120,8 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Upload helpers
 # ---------------------------------------------------------------------------
-def _validate_extension(filename: str) -> str:
-    suffix = Path(filename or "").suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
-        )
-    return suffix
-
-
-async def _save_upload(file: UploadFile) -> tuple[Path, int, str]:
-    suffix = _validate_extension(file.filename or "")
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    orig = Path(file.filename or f"upload{suffix}").name
-    safe_name = f"{timestamp}_{orig}"
-    dest = UPLOAD_DIR / safe_name
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty file received.")
-    dest.write_bytes(content)
-    return dest, len(content), safe_name
-
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-@app.get("/")
-def root():
-    return {
-        "service": "Urban Parcel Mapping API",
-        "version": APP_VERSION,
-        "status": "running",
-        "docs": "/docs",
-        "health": "/api/health",
-        "detect": "/detect/buildings",
-        "model_status": "/detect/model-status",
-    }
-
-
-@app.get("/api/health")
-def health():
-    status = get_model_status()
-    return {
-        "status": "ok",
-        "service": "urban-parcel-mapping-backend",
-        "version": APP_VERSION,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "model_loaded": status["loaded"],
-        "model_name": status["model_name"],
-        "model_type": status["model_type"],
-        "supports_buildings": status["supports_buildings"],
-    }
-
-
-@app.get("/api/info")
-def info():
-    status = get_model_status()
-    return {
-        "pipeline": [
-            "1. Upload drone/aerial image",
-            "2. AI analysis (YOLO building detection) — /detect/buildings",
-            "3. Annotated image saved to outputs/ and served at /outputs/<file>",
-            "4. Interactive map overlay — frontend shell ready",
-            "5. Parcel/property report — upcoming",
-        ],
-        "stack": {
-            "frontend": "React + Vite + Leaflet",
-            "backend": "FastAPI",
-            "ai": "Ultralytics YOLO (OpenCV annotation)",
-        },
-        "ai_status": "ready" if status["loaded"] else "model_missing",
-        "model": status,
-    }
-
-
-<<<<<<< HEAD
-@app.get("/detect/model-status")
-@app.get("/api/detect/model-status")
-def model_status():
-    """Expose how the model was loaded (or why it is missing)."""
-    return get_model_status()
-
-
-@app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...)):
-    """Accept an image and save it to data/uploads/ (legacy connectivity check)."""
-    dest, size, safe_name = await _save_upload(file)
-    _ = dest
-    return JSONResponse(
-        status_code=201,
-        content={
-            "message": "File received. Run POST /detect/buildings for AI analysis.",
-            "filename": safe_name,
-            "size_bytes": size,
-=======
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -271,12 +187,77 @@ async def _store_upload(file: UploadFile) -> dict:
 
     return {
         "filename": safe_name,
+        "path": str(dest),
         "original_filename": original,
         "width": width,
         "height": height,
         "size_bytes": len(content),
         "status": "uploaded",
     }
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+@app.get("/")
+def root():
+    """Root endpoint — quick human-readable check."""
+    return {
+        "service": "Urban Parcel Mapping API",
+        "version": APP_VERSION,
+        "status": "running",
+        "docs": "/docs",
+        "health": "/api/health",
+        "detect_buildings": "/detect/buildings",
+        "detect_features": "/detect/features",
+        "model_status": "/detect/model-status",
+    }
+
+
+@app.get("/api/health")
+def health():
+    """Health check used by the frontend 'Test Connection' button."""
+    status = get_model_status()
+    return {
+        "status": "ok",
+        "service": "urban-parcel-mapping-backend",
+        "version": APP_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "model_loaded": status["loaded"],
+        "model_name": status["model_name"],
+        "model_type": status["model_type"],
+        "supports_buildings": status["supports_buildings"],
+    }
+
+
+@app.get("/api/info")
+def info():
+    """Describe the pipeline (no AI execution here)."""
+    status = get_model_status()
+    return {
+        "pipeline": [
+            "1. Upload drone/aerial image",
+            "2. AI analysis: /detect/buildings (YOLO) or /detect/features (full pipeline)",
+            "3. Annotated image saved to outputs/ and served at /outputs/<file>",
+            "4. Interactive map overlays per feature type — frontend layers",
+            "5. Parcel/property report — upcoming",
+        ],
+        "stack": {
+            "frontend": "React + Vite + Leaflet",
+            "backend": "FastAPI",
+            "ai": "Ultralytics YOLO + classical colour segmentation",
+        },
+        "feature_types": list(FEATURE_TYPES),
+        "ai_status": "ready" if status["loaded"] else "model_missing",
+        "model": status,
+    }
+
+
+@app.get("/detect/model-status")
+@app.get("/api/detect/model-status")
+def model_status():
+    """Expose how the model was loaded (or why it is missing)."""
+    return get_model_status()
 
 
 @app.post("/upload", status_code=201)
@@ -286,25 +267,22 @@ async def upload(file: UploadFile = File(...)):
     and return filename, image dimensions, file size and upload status.
     No AI detection runs on this endpoint.
     """
-    return await _store_upload(file)
+    stored = await _store_upload(file)
+    return {k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")}
 
 
 @app.post("/api/upload", status_code=201)
 async def upload_image(file: UploadFile = File(...)):
-    """
-    Same storage + validation as POST /upload; kept for the Vite dev
-    proxy and the existing UI. Deliberately returns NO detections —
-    Step 2 will add real AI.
-    """
+    """Same storage + validation as POST /upload; kept for the Vite dev proxy
+    and the existing UI (legacy connectivity check)."""
     stored = await _store_upload(file)
     return JSONResponse(
         status_code=201,
         content={
-            **stored,
-            "message": "File received. AI analysis is not implemented yet (Step 2).",
+            **{k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")},
+            "message": "File received. Run POST /detect/buildings or /detect/features for AI analysis.",
             "ai_status": "not_implemented",
             "detections": None,  # explicitly null — no fake results
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
         },
     )
 
@@ -314,7 +292,10 @@ async def _detect_buildings_impl(
     confidence: float,
     iou: float,
 ) -> dict:
-    saved_path, size_bytes, saved_name = await _save_upload(file)
+    stored = await _store_upload(file)
+    saved_path = Path(stored["path"])
+    saved_name = stored["filename"]
+    size_bytes = stored["size_bytes"]
 
     # Model missing -> 503 with actionable instructions (never fake boxes).
     status = get_model_status()
@@ -371,7 +352,7 @@ async def _detect_buildings_impl(
         "annotated_image": f"/outputs/{annotated_name}",
         "annotated_image_file": annotated_name,
         "warning": result["warning"],
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -404,3 +385,115 @@ async def detect_buildings_api_alias(
     iou: float = Query(0.45, ge=0.01, le=0.99),
 ):
     return await _detect_buildings_impl(file, confidence, iou)
+
+
+async def _detect_features_impl(
+    file: UploadFile,
+    confidence: float,
+    iou: float,
+) -> dict:
+    """Full feature-extraction pipeline (never invents detections)."""
+    stored = await _store_upload(file)
+    saved_path = Path(stored["path"])
+    saved_name = stored["filename"]
+
+    status = get_model_status()
+    yolo_dets: list = []
+    warnings: list = []
+    if status["loaded"]:
+        try:
+            result = await run_in_threadpool(run_detection, saved_path, confidence, iou)
+            yolo_dets = result["all_detections"]
+            if result.get("warning"):
+                warnings.append(result["warning"])
+        except Exception as exc:
+            # Honest degradation: YOLO failed, classical branch still runs.
+            warnings.append(f"YOLO inference failed ({exc}); YOLO-based categories are empty.")
+            status = {**status, "loaded": False}
+    else:
+        warnings.append(
+            "YOLO model unavailable — buildings/roads/other come only from a loaded model "
+            "and are empty in this response. Vegetation/water use classical segmentation."
+        )
+
+    pipe = await run_in_threadpool(
+        extract_features, saved_path, yolo_dets, status["loaded"]
+    )
+    features = pipe["features"]
+    counts = {k: len(v) for k, v in features.items()}
+    counts["total"] = sum(counts.values())
+
+    stem = Path(saved_name).stem
+    annotated_name = f"{stem}_features.jpg"
+    annotated_path = OUTPUTS_DIR / annotated_name
+    try:
+        await run_in_threadpool(annotate_features, saved_path, features, annotated_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Annotation failed: {exc}")
+
+    buildings = features["buildings"]
+    avg_conf = round(sum(d["confidence"] for d in buildings) / len(buildings), 4) if buildings else 0.0
+
+    return {
+        "filename": saved_name,
+        "size_bytes": stored["size_bytes"],
+        "image_width": stored["width"],
+        "image_height": stored["height"],
+        "model": {
+            "name": status["model_name"],
+            "type": status["model_type"],
+            "supports_buildings": status["supports_buildings"],
+            "loaded": status["loaded"],
+        },
+        # Required shape: detections organised by feature type.
+        "features": features,
+        "counts": counts,
+        # Why an empty category is empty (model missing vs nothing found).
+        "reasons": pipe["reasons"],
+        "feature_colors": FEATURE_COLORS_HEX,
+        # Backwards-compatible building summary (mirrors /detect/buildings).
+        "detections": buildings,
+        "building_count": len(buildings),
+        "average_confidence": avg_conf,
+        "annotated_image": f"/outputs/{annotated_name}",
+        "annotated_image_file": annotated_name,
+        "segmentation_stats": pipe.get("segmentation_stats", {}),
+        "warnings": warnings,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/detect/features")
+async def detect_features(
+    file: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+):
+    """Run the full feature-extraction pipeline on an uploaded drone image.
+
+    Returns:
+        {
+          "features": {
+            "buildings": [{"class", "confidence", "bbox", "polygon", ...}],
+            "roads": [...],
+            "vegetation": [...],
+            "water": [...],
+            "other": [...]
+          },
+          "counts": {...}, "reasons": {...},
+          "annotated_image": "/outputs/<file>_features.jpg", ...
+        }
+
+    Empty categories are honest (see `reasons`) — never fabricated.
+    """
+    return await _detect_features_impl(file, confidence, iou)
+
+
+# Alias under /api/* so the Vite dev proxy (`/api -> :8000`) works too.
+@app.post("/api/detect/features")
+async def detect_features_api_alias(
+    file: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=0.99),
+    iou: float = Query(0.45, ge=0.01, le=0.99),
+):
+    return await _detect_features_impl(file, confidence, iou)

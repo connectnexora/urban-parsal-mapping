@@ -13,8 +13,12 @@ export default function App() {
   // Real YOLO result from POST /detect/buildings (null until a run finishes).
   const [detection, setDetection] = useState(null);
   const [detectionError, setDetectionError] = useState(null);
+  // Full pipeline result from POST /detect/features (null until a run finishes).
+  const [features, setFeatures] = useState(null);
+  const [featuresError, setFeaturesError] = useState(null);
   const [originalPreview, setOriginalPreview] = useState(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   return (
     <div className="app">
@@ -29,12 +33,17 @@ export default function App() {
           setOriginalPreview={setOriginalPreview}
           isDetecting={isDetecting}
           setIsDetecting={setIsDetecting}
+          setFeatures={setFeatures}
+          setFeaturesError={setFeaturesError}
+          isExtracting={isExtracting}
+          setIsExtracting={setIsExtracting}
         />
-        <MapView />
+        <MapView featureResult={features} overlayUrl={originalPreview} />
         <ResultsPanel
           backendStatus={backendStatus}
           healthData={healthData}
           detection={detection}
+          features={features}
         />
       </main>
       <DetectionResults
@@ -42,10 +51,13 @@ export default function App() {
         error={detectionError}
         originalPreview={originalPreview}
         isDetecting={isDetecting}
+        features={features}
+        featuresError={featuresError}
+        isExtracting={isExtracting}
       />
       <footer className="footer">
-        <span>YOLO building detection · POST /detect/buildings · annotated outputs in outputs/</span>
-        <span>React + Leaflet · FastAPI · Ultralytics YOLO + OpenCV</span>
+        <span>Feature pipeline · POST /detect/features · annotated outputs in outputs/</span>
+        <span>React + Leaflet · FastAPI · YOLO + colour segmentation</span>
       </footer>
     </div>
   );

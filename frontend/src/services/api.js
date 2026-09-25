@@ -26,16 +26,12 @@ export async function getInfo() {
   return res.data;
 }
 
-<<<<<<< HEAD
 export async function getModelStatus() {
   const res = await client.get('/detect/model-status');
   return res.data;
 }
 
-export async function uploadImage(file) {
-=======
 export async function uploadImage(file, onProgress) {
->>>>>>> 92bfc383403d78df857f653c268c671308dc6438
   const form = new FormData();
   // Third arg preserves the original filename in the multipart payload.
   form.append('file', file, file.name);
@@ -70,8 +66,25 @@ export async function detectBuildings(file, { confidence = 0.25, iou = 0.45 } = 
   return res.data;
 }
 
-/** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL. */
-export function resolveAssetUrl(path) {
+/**
+ * Run the full feature-extraction pipeline.
+ * POST /detect/features with multipart `file` (+ optional query
+ * `confidence`, `iou`). Returns { features: {buildings, roads, vegetation,
+ * water, other}, counts, reasons, annotated_image, ... } where every item
+ * carries {class, confidence, bbox, polygon}. Empty categories are honest
+ * (see `reasons`) — never fabricated.
+ */
+export async function detectFeatures(file, { confidence = 0.25, iou = 0.45 } = {}) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await detectClient.post('/detect/features', form, {
+    params: { confidence, iou },
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+/** Resolve a backend-served asset path (e.g. `/outputs/x.jpg`) to a full URL. */export function resolveAssetUrl(path) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
