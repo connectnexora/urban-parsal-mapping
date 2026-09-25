@@ -509,11 +509,19 @@ async def _detect_parcels_impl(
         "image_width": result["image_width"],
         "image_height": result["image_height"],
         "gsd_m_per_px": result["gsd_m_per_px"],
+        "area_source": result["area_source"],
+        "area_label": result["area_label"],
+        "georeferencing": result["georeferencing"],
         "method": result["method"],
         "used_seg_model": result["used_seg_model"],
         "parcels": result["parcels"],
         "parcel_count": result["parcel_count"],
         "total_area_estimated_m2": result["total_area_estimated_m2"],
+        "total_area_estimated_ha": result["total_area_estimated_ha"],
+        "average_area_m2": result["average_area_m2"],
+        "average_area_ha": result["average_area_ha"],
+        "largest_parcel": result["largest_parcel"],
+        "summary": result["summary"],
         "average_confidence": result["average_confidence"],
         "geojson": result["geojson"],
         "annotated_image": f"/outputs/{annotated_name}",
@@ -531,7 +539,9 @@ async def detect_parcels(
     file: UploadFile = File(...),
     gsd: float = Query(
         0.1, ge=0.001, le=10.0,
-        description="Ground sample distance in meters/pixel. Areas are estimates.",
+        description="Fallback ground sample distance in meters/pixel. "
+        "Overridden by embedded GeoTIFF spatial tags when present; "
+        "otherwise areas are labelled estimated image-based.",
     ),
     epsilon: float = Query(
         0.012, ge=0.002, le=0.08,
@@ -543,9 +553,12 @@ async def detect_parcels(
 ):
     """Extract approximate parcel polygons from a drone image.
 
-    Returns parcels as [{parcel_id, area, perimeter, confidence, polygon}],
-    where area/perimeter are AI-estimated via GSD — NOT legal cadastre —
-    plus an annotated image and GeoJSON, both saved under outputs/.
+    Returns parcels as [{parcel_id, area_m2, area_ha, perimeter_m,
+    confidence, polygon}] plus a `summary` (totals, average, largest
+    parcel) and `area_source` ('georeferenced' when the file carries usable
+    spatial tags, else 'estimated' with the assumed GSD) — NOT legal
+    cadastre — plus an annotated image and GeoJSON, both saved under
+    outputs/.
     """
     return await _detect_parcels_impl(file, gsd, epsilon, conf, max_parcels)
 
@@ -553,7 +566,8 @@ async def detect_parcels(
 @app.post("/api/detect/parcels")
 async def detect_parcels_api_alias(
     file: UploadFile = File(...),
-    gsd: float = Query(0.1, ge=0.001, le=10.0),
+    gsd: float = Query(0.1, ge=0.001, le=10.0,
+                       description="Fallback GSD in m/px; overridden by embedded GeoTIFF tags when present."),
     epsilon: float = Query(0.012, ge=0.002, le=0.08),
     conf: float = Query(0.25, ge=0.01, le=0.99),
     max_parcels: int = Query(60, ge=1, le=200),

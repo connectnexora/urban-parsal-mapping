@@ -37,8 +37,9 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 APPROX_DISCLAIMER = (
     "AI-estimated / approximate parcel boundaries for visualisation and "
     "planning exploration only. NOT legally valid cadastral boundaries. "
-    "Areas and perimeters are estimates derived from pixel geometry and an "
-    "assumed ground sample distance (GSD)."
+    "Areas and perimeters are derived from pixel geometry and either embedded "
+    "GeoTIFF spatial tags (when present) or an assumed ground sample distance "
+    "(GSD) — see area_source in the response."
 )
 
 SEG_HELP_MESSAGE = (
@@ -140,6 +141,135 @@ def _read_bgr(image_path: Path):
         rgb = pil.convert("RGB")
         arr = np.asarray(rgb)
         return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
+
+# ---------------------------------------------------------------------------
+# Georeferencing: use embedded spatial tags when the file has them.
+# ---------------------------------------------------------------------------
+# GeoTIFF tag IDs (TIFF/EP spec).
+_TAG_PIXEL_SCALE = 33550   # ModelPixelScaleTag: (scaleX, scaleY, scaleZ)
+_TAG_TIEPOINT = 33922      # ModelTiepointTag: (i,j,k, x,y,z, ...)
+_TAG_TRANSFORM = 34264     # ModelTransformationTag: 4x4 matrix (implies rotation)
+_TAG_GEO_KEYS = 34735      # GeoKeyDirectoryTag
+_TAG_GEO_ASCII = 34737     # GeoAsciiParamsTag
+
+
+def detect_georeference(image_path: Path) -> Dict[str, Any]:
+    """Inspect an image for embedded spatial information.
+
+    Returns a dict with:
+      - georeferenced (bool), gsd_x/gsd_y/gsd (m/px) when usable,
+      - crs_hint (str), detail (str), rotated (bool).
+    Strategy: optional rasterio first (accurate, handles CRS units), else
+    lightweight GeoTIFF tag parsing via Pillow. Plain JPG/PNG files have no
+    such tags and come back georeferenced=False with an explicit reason.
+    Never raises — failures mean "not usable", reported honestly.
+    """
+    info: Dict[str, Any] = {
+        "georeferenced": False,
+        "gsd_x": None,
+        "gsd_y": None,
+        "gsd": None,
+        "crs_hint": None,
+        "detail": "No embedded spatial information found.",
+        "rotated": False,
+        "source": "none",
+    }
+
+    # 1) rasterio (optional — not a hard dependency).
+    try:
+        import rasterio  # type: ignore
+
+        try:
+            with rasterio.open(image_path) as src:
+                tr = src.transform
+                if tr and tr.a and tr.e:
+                    # tr.a = pixel width, tr.e = pixel height (negative).
+                    # Only usable directly when CRS units are meters.
+                    crs = src.crs
+                    units = (getattr(crs, "linear_units", "") or "").lower() if crs else ""
+                    if crs and crs.is_projected and ("m" in units or units in ("metre", "meter", "meters")):
+                        gx, gy = abs(float(tr.a)), abs(float(tr.e))
+                        if gx > 0 and gy > 0:
+                            info.update(
+                                georeferenced=True,
+                                gsd_x=gx,
+                                gsd_y=gy,
+                                gsd=(gx + gy) / 2.0,
+                                crs_hint=str(crs.to_string() or crs)[:120],
+                                detail=f"GeoTIFF via rasterio: pixel size {gx:.4f} x {gy:.4f} m.",
+                                rotated=bool(tr.b or tr.d),
+                                source="rasterio",
+                            )
+                            return info
+                    info["detail"] = (
+                        f"Raster has CRS '{crs}' whose units are not meters "
+                        "(e.g. degrees) — metric GSD cannot be derived without "
+                        "reprojection; falling back to estimated GSD."
+                    )
+                    info["source"] = "rasterio-unusable-crs"
+                    return info
+        except ImportError:
+            pass
+        except Exception as exc:
+            info["detail"] = f"rasterio read failed ({exc}); trying TIFF tags."
+    except ImportError:
+        pass
+
+    # 2) Pillow TIFF tags (no extra dependency).
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as im:
+            tags = getattr(im, "tag_v2", None)
+            if not tags:
+                return info
+            scale = tags.get(_TAG_PIXEL_SCALE)
+            if not scale or len(scale) < 2 or not scale[0] or not scale[1]:
+                return info
+            gx, gy = abs(float(scale[0])), abs(float(scale[1]))
+            if not (1e-6 < gx < 1e4 and 1e-6 < gy < 1e4):
+                info["detail"] = (
+                    f"ModelPixelScaleTag present but implausible ({gx} x {gy}); ignored."
+                )
+                return info
+            # CRS hint from GeoKeys / ASCII params.
+            crs_hint = None
+            try:
+                ascii_params = tags.get(_TAG_GEO_ASCII)
+                if ascii_params:
+                    crs_hint = str(ascii_params)[:120]
+            except Exception:
+                pass
+            # Degree-based GCS check: geographic CRS stores degrees, not meters.
+            # Heuristic: sub-degree scales (< ~1e-3) with no PCS hint are degrees.
+            looks_like_degrees = gx < 1e-3 and "PCS" not in (crs_hint or "").upper()
+            if looks_like_degrees:
+                info.update(
+                    detail=(
+                        f"GeoTIFF tags present but in degrees ({gx:.8f} deg/px?) — "
+                        "metric GSD needs a projected CRS; falling back to estimated GSD."
+                    ),
+                    crs_hint=crs_hint or "geographic (degrees)",
+                    source="tiff-tags-degrees",
+                )
+                return info
+            rotated = _TAG_TRANSFORM in tags
+            info.update(
+                georeferenced=True,
+                gsd_x=gx,
+                gsd_y=gy,
+                gsd=(gx + gy) / 2.0,
+                crs_hint=crs_hint or "projected (meters, via ModelPixelScaleTag)",
+                detail=f"GeoTIFF ModelPixelScaleTag: {gx:.4f} x {gy:.4f} m/px.",
+                rotated=rotated,
+                source="tiff-tags",
+            )
+            return info
+    except Exception as exc:
+        info["detail"] = f"Spatial-tag inspection failed ({exc})."
+        return info
+    return info
 
 
 def _preprocess(bgr, max_dim: int = 1600):
@@ -301,6 +431,13 @@ def _masks_to_parcels(
                 "polygon": [[round(x, 1), round(y, 1)] for x, y in poly.exterior.coords],
                 "area_px": round(area_px, 1),
                 "perimeter_px": round(perim_px, 1),
+                # Metric estimates via appropriate geospatial math: planar
+                # pixel geometry scaled by GSD (exact for north-up rasters;
+                # rotation, if any, is flagged in the georeferencing report).
+                # `area`/`perimeter` are kept as backwards-compatible aliases.
+                "area_m2": round(area_px * gsd * gsd, 2),
+                "area_ha": round(area_px * gsd * gsd / 10000.0, 4),
+                "perimeter_m": round(perim_px * gsd, 2),
                 "area": round(area_px * gsd * gsd, 2),
                 "perimeter": round(perim_px * gsd, 2),
                 "confidence": round(float(conf), 3),
@@ -320,7 +457,10 @@ def _masks_to_parcels(
             {
                 "parcel_id": p["parcel_id"],
                 "area": p["area"],
+                "area_m2": p["area_m2"],
+                "area_ha": p["area_ha"],
                 "perimeter": p["perimeter"],
+                "perimeter_m": p["perimeter_m"],
                 "confidence": p["confidence"],
                 "polygon": p["polygon"],
                 "area_px": p["area_px"],
@@ -357,6 +497,24 @@ def extract_parcels(
         raise ValueError("gsd must be within [0.001, 10.0] meters/pixel.")
     epsilon_factor = float(min(0.08, max(0.002, epsilon_factor)))
 
+    # --- Spatial source: embedded georeferencing wins over the assumed GSD.
+    georef = detect_georeference(image_path)
+    if georef.get("georeferenced") and georef.get("gsd"):
+        gsd = float(georef["gsd"])
+        area_source = "georeferenced"
+        area_label = (
+            "Georeferenced area — derived from the image's embedded spatial "
+            f"information ({georef.get('detail')})"
+        )
+    else:
+        area_source = "estimated"
+        reason = georef.get("detail") or "No embedded spatial information found."
+        area_label = (
+            "Estimated image-based area (NOT real-world cadastral area) — "
+            f"plain image without usable geographic coordinates ({reason} "
+            f"Assumed GSD {gsd} m/px; adjust it for your sensor/altitude.)"
+        )
+
     bgr = _read_bgr(image_path)
     if bgr is None:
         raise RuntimeError(f"Could not decode image: {image_path}")
@@ -382,8 +540,32 @@ def extract_parcels(
             parcels = _masks_to_parcels(regions, scale, orig_w, orig_h, gsd, epsilon_factor, method)
     parcels = parcels[: max(1, int(max_parcels))]
 
-    total_area = round(sum(p["area"] for p in parcels), 2)
+    total_area = round(sum(p["area_m2"] for p in parcels), 2)
+    total_ha = round(total_area / 10000.0, 4)
     avg_conf = round(sum(p["confidence"] for p in parcels) / len(parcels), 3) if parcels else 0.0
+    avg_area = round(total_area / len(parcels), 2) if parcels else 0.0
+    avg_ha = round(total_ha / len(parcels), 4) if parcels else 0.0
+    largest = max(parcels, key=lambda p: p["area_m2"]) if parcels else None
+    summary = {
+        "total_parcels": len(parcels),
+        "total_area_m2": total_area,
+        "total_area_ha": total_ha,
+        "average_area_m2": avg_area,
+        "average_area_ha": avg_ha,
+        "average_confidence": avg_conf,
+        "largest_parcel": (
+            {
+                "parcel_id": largest["parcel_id"],
+                "area_m2": largest["area_m2"],
+                "area_ha": largest["area_ha"],
+                "perimeter_m": largest["perimeter_m"],
+            }
+            if largest
+            else None
+        ),
+        "area_source": area_source,
+        "area_label": area_label,
+    }
 
     geojson = {
         "type": "FeatureCollection",
@@ -393,14 +575,17 @@ def extract_parcels(
             "image_width_px": orig_w,
             "image_height_px": orig_h,
             "gsd_m_per_px": gsd,
+            "area_source": area_source,
+            "georeferencing": georef,
         },
         "features": [
             {
                 "type": "Feature",
                 "properties": {
                     "parcel_id": p["parcel_id"],
-                    "area_m2_estimated": p["area"],
-                    "perimeter_m_estimated": p["perimeter"],
+                    "area_m2_estimated": p["area_m2"],
+                    "area_ha_estimated": p["area_ha"],
+                    "perimeter_m_estimated": p["perimeter_m"],
                     "confidence_approx": p["confidence"],
                     "method": p["method"],
                     "disclaimer": "AI-estimated/approximate — not a legal cadastral boundary.",
@@ -416,11 +601,19 @@ def extract_parcels(
         "parcels": parcels,
         "parcel_count": len(parcels),
         "total_area_estimated_m2": total_area,
+        "total_area_estimated_ha": total_ha,
+        "average_area_m2": avg_area,
+        "average_area_ha": avg_ha,
+        "largest_parcel": summary["largest_parcel"],
+        "summary": summary,
         "average_confidence": avg_conf,
         "geojson": geojson,
         "image_width": orig_w,
         "image_height": orig_h,
         "gsd_m_per_px": gsd,
+        "area_source": area_source,
+        "area_label": area_label,
+        "georeferencing": georef,
         "method": method,
         "seg_weights_found": seg_w,
         "used_seg_model": used_seg,

@@ -27,14 +27,15 @@ export default function ParcelDetail({ parcelResult, detection, featureResult, s
         </button>
       </div>
       <div className="parcel-grid">
-        <div className="stat"><div className="v">~{parcel.area} m²</div><div className="l">Estimated area</div></div>
-        <div className="stat"><div className="v">~{parcel.perimeter} m</div><div className="l">Perimeter</div></div>
+        <div className="stat"><div className="v">~{(parcel.area_m2 ?? parcel.area).toLocaleString()} m²</div><div className="l">Estimated area ({Number(parcel.area_ha ?? (parcel.area_m2 ?? parcel.area ?? 0) / 10000).toFixed(4)} ha)</div></div>
+        <div className="stat"><div className="v">~{parcel.perimeter_m ?? parcel.perimeter} m</div><div className="l">Perimeter</div></div>
         <div className="stat"><div className="v">{cov.count}</div><div className="l">Buildings inside</div></div>
         <div className="stat"><div className="v">~{cov.coveragePct}%</div><div className="l">Building coverage</div></div>
         <div className="stat"><div className="v">{Number(parcel.confidence).toFixed(2)}</div><div className="l">AI confidence (heur.)</div></div>
         <div className="stat"><div className="v">{parcel.num_vertices}</div><div className="l">Vertices</div></div>
       </div>
-      <p className="mono">Method: {parcel.method} · GSD {parcelResult.gsd_m_per_px} m/px</p>
+      <p className="mono">Method: {parcel.method} · GSD {parcelResult.gsd_m_per_px} m/px · {parcelResult.area_source === 'georeferenced' ? '🛰️ Georeferenced' : '📐 Estimated image-based'}</p>
+      {parcelResult.area_label && <p className="mono">{parcelResult.area_label}</p>}
       <p className="warn-box">
         Approximate boundary for visualisation only — not a survey-grade or legally valid cadastral boundary.
       </p>

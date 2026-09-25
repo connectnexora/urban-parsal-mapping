@@ -13,6 +13,10 @@ export default function ResultsPanel({ backendStatus, healthData, detection, fea
   const counts = features?.counts || {};
   const parcels = hasParcels ? (parcelResult.parcel_count ?? parcelResult.parcels?.length ?? 0) : '—';
   const totalArea = hasParcels ? (parcelResult.total_area_estimated_m2 ?? '—') : '—';
+  const totalHa = hasParcels
+    ? (parcelResult.total_area_estimated_ha ?? (Number(parcelResult.total_area_estimated_m2) || 0) / 10000)
+    : null;
+  const areaSrc = parcelResult?.area_source;
 
   return (
     <section className="card">
@@ -33,7 +37,10 @@ export default function ResultsPanel({ backendStatus, healthData, detection, fea
         <div className="stat"><div className="v">{buildings}</div><div className="l">Buildings</div></div>
         <div className="stat"><div className="v">{avgConf}</div><div className="l">Avg confidence</div></div>
         <div className="stat"><div className="v">{parcels}</div><div className="l">Parcels (approx)</div></div>
-        <div className="stat"><div className="v" style={{ fontSize: 16 }}>{totalArea}</div><div className="l">Total area m² (est.)</div></div>
+        <div className="stat">
+          <div className="v" style={{ fontSize: 16 }}>{totalArea}</div>
+          <div className="l">Total area m² {totalHa != null ? `(${Number(totalHa).toFixed(4)} ha)` : ''} · {areaSrc === 'georeferenced' ? 'georef.' : 'est.'}</div>
+        </div>
       </div>
 
       <div className="stats" style={{ marginTop: 10 }}>

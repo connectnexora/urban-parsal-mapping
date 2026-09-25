@@ -193,7 +193,8 @@ export default function MapView({
     layer.bindTooltip(`${p.parcel_id} · ~${p.area_m2_estimated} m² (est.)`, { sticky: true });
     layer.bindPopup(
       `<b>${p.parcel_id}</b> (AI-estimated, approximate)` +
-      `<br/>Area: ~${p.area_m2_estimated} m² · Perimeter: ~${p.perimeter_m_estimated} m` +
+      `<br/>Area: ~${p.area_m2_estimated} m² (~${(Number(p.area_ha_estimated ?? p.area_m2_estimated / 10000)).toFixed(4)} ha)` +
+      `<br/>Perimeter: ~${p.perimeter_m_estimated} m` +
       `<br/>Buildings: ${p.building_count} · Coverage: ~${p.building_coverage_pct}%` +
       `<br/>AI confidence: ${p.confidence_approx} (heuristic)`,
     );

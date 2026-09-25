@@ -9,6 +9,68 @@
 
 export const CENTER = [12.9716, 77.5946]; // Bengaluru demo anchor
 
+export const M2_PER_HA = 10000;
+
+/** Square meters -> hectares. */
+export function m2ToHa(m2) {
+  return (Number(m2) || 0) / M2_PER_HA;
+}
+
+/** Parcel area in m², tolerant of old (`area`) and new (`area_m2`) shapes. */
+export function parcelAreaM2(p) {
+  return Number(p?.area_m2 ?? p?.area ?? 0) || 0;
+}
+
+/** Parcel area in hectares. */
+export function parcelAreaHa(p) {
+  if (p?.area_ha != null) return Number(p.area_ha) || 0;
+  return m2ToHa(parcelAreaM2(p));
+}
+
+/** Parcel perimeter in meters, tolerant of old/new shapes. */
+export function parcelPerimeterM(p) {
+  return Number(p?.perimeter_m ?? p?.perimeter ?? 0) || 0;
+}
+
+/**
+ * Combined summary statistics for the parcel information panel.
+ * Buildings come from the caller (YOLO detections preferred, else feature
+ * pipeline buildings). Coverage uses the same honest pixel heuristic as
+ * buildingCoverage(). All areas are labelled by parcelResult.area_source.
+ */
+export function computeSummary(parcelResult, buildings) {
+  const parcels = parcelResult?.parcels || [];
+  const totalParcels = parcels.length;
+  const totalAreaM2 = Math.round(parcels.reduce((s, p) => s + parcelAreaM2(p), 0) * 100) / 100;
+  const totalAreaHa = Math.round(m2ToHa(totalAreaM2) * 10000) / 10000;
+  const averageAreaM2 = totalParcels ? Math.round((totalAreaM2 / totalParcels) * 100) / 100 : 0;
+  const averageAreaHa = totalParcels ? Math.round((totalAreaHa / totalParcels) * 10000) / 10000 : 0;
+  let largestParcel = null;
+  for (const p of parcels) {
+    if (!largestParcel || parcelAreaM2(p) > parcelAreaM2(largestParcel)) largestParcel = p;
+  }
+  const coverageById = buildingCoverage(parcels, buildings || []);
+  const totalBuildings = (buildings || []).length;
+  const avgCoveragePct = totalParcels
+    ? Math.round(
+      (parcels.reduce((s, p) => s + (coverageById[p.parcel_id]?.coveragePct ?? 0), 0) / totalParcels) * 10,
+    ) / 10
+    : 0;
+  return {
+    totalParcels,
+    totalAreaM2,
+    totalAreaHa,
+    averageAreaM2,
+    averageAreaHa,
+    largestParcel,
+    totalBuildings,
+    averageCoveragePct: avgCoveragePct,
+    coverageById,
+    areaSource: parcelResult?.area_source || 'estimated',
+    areaLabel: parcelResult?.area_label || 'Estimated image-based area.',
+  };
+}
+
 /** Frame bounds for an image of {w,h} px, aspect-preserving, ~0.06 deg. */
 export function imageFrame(dims) {
   const w = Math.max(1, dims?.w || 1);
@@ -107,8 +169,9 @@ export function parcelsToGeoJSON(parcelResult, coverageById = {}) {
       properties: {
         kind: 'parcel',
         parcel_id: p.parcel_id,
-        area_m2_estimated: p.area,
-        perimeter_m_estimated: p.perimeter,
+        area_m2_estimated: p.area_m2 ?? p.area,
+        area_ha_estimated: p.area_ha ?? ((p.area_m2 ?? p.area ?? 0) / 10000),
+        perimeter_m_estimated: p.perimeter_m ?? p.perimeter,
         confidence_approx: p.confidence,
         method: p.method,
         num_vertices: p.num_vertices,

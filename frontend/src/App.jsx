@@ -6,6 +6,7 @@ import ResultsPanel from './components/ResultsPanel.jsx';
 import DetectionResults from './components/DetectionResults.jsx';
 import ParcelResults from './components/ParcelResults.jsx';
 import ParcelDetail from './components/ParcelDetail.jsx';
+import SummaryStats from './components/SummaryStats.jsx';
 import './App.css';
 
 export default function App() {
@@ -90,6 +91,11 @@ export default function App() {
         isExtracting={isExtracting}
         selectedParcelId={selectedParcelId}
         onSelectParcel={selectParcel}
+      />
+      <SummaryStats
+        parcelResult={parcelResult}
+        detection={detection}
+        featureResult={features}
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>

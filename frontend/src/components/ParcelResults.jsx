@@ -31,6 +31,10 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
   const annotatedUrl = resolveAssetUrl(parcelResult.annotated_image);
   const geojsonUrl = resolveAssetUrl(parcelResult.geojson_file);
   const parcels = parcelResult.parcels || [];
+  const geo = parcelResult.area_source === 'georeferenced';
+  const areaOf = (p) => p.area_m2 ?? p.area;
+  const haOf = (p) => (p.area_ha ?? ((p.area_m2 ?? p.area ?? 0) / 10000));
+  const perimOf = (p) => p.perimeter_m ?? p.perimeter;
 
   return (
     <section className="card detect-section">
@@ -39,17 +43,21 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
           <h2>5 · AI Parcel Boundaries — approximate, NOT legal cadastre</h2>
           <p className="sub">
             Method <b>{parcelResult.method}</b> · {parcelResult.parcel_count} parcel(s) ·{' '}
-            total ~{parcelResult.total_area_estimated_m2} m² · avg conf {Number(parcelResult.average_confidence ?? 0).toFixed(2)} ·{' '}
+            total ~{parcelResult.total_area_estimated_m2} m² ({parcelResult.total_area_estimated_ha ?? (parcelResult.total_area_estimated_m2 / 10000).toFixed(4)} ha) · avg conf {Number(parcelResult.average_confidence ?? 0).toFixed(2)} ·{' '}
             GSD {parcelResult.gsd_m_per_px} m/px · {parcelResult.image_width}×{parcelResult.image_height}px
           </p>
         </div>
         <div className="detect-badges">
           <span className="badge">🧭 {parcelResult.parcel_count} parcels</span>
           <span className="badge">📐 ~{parcelResult.total_area_estimated_m2} m² total</span>
+          <span className={`badge ${geo ? 'badge-geo' : 'badge-est'}`}>
+            {geo ? '🛰️ Georeferenced' : '📐 Estimated image-based'}
+          </span>
         </div>
       </div>
 
       <p className="warn-box">{parcelResult.disclaimer}</p>
+      {parcelResult.area_label && <p className="mono">{parcelResult.area_label}</p>}
       {parcelResult.notes && <p className="mono">{parcelResult.notes}</p>}
 
       <div className="detect-grid">
@@ -85,14 +93,15 @@ export default function ParcelResults({ parcelResult, error, originalPreview, is
         <div className="table-wrap">
           <table className="det-table">
             <thead>
-              <tr><th>Parcel</th><th>Area (m² est.)</th><th>Perimeter (m est.)</th><th>Conf. (heur.)</th><th>Vertices</th><th>Map</th></tr>
+              <tr><th>Parcel</th><th>Area (m²)</th><th>Area (ha)</th><th>Perimeter (m)</th><th>Conf. (heur.)</th><th>Vertices</th><th>Map</th></tr>
             </thead>
             <tbody>
               {parcels.map((p) => (
                 <tr key={p.parcel_id} className={p.parcel_id === selectedParcelId ? 'row-selected' : ''}>
                   <td><b>{p.parcel_id}</b></td>
-                  <td>{p.area}</td>
-                  <td>{p.perimeter}</td>
+                  <td>{areaOf(p)}</td>
+                  <td>{Number(haOf(p)).toFixed(4)}</td>
+                  <td>{perimOf(p)}</td>
                   <td>{Number(p.confidence).toFixed(3)}</td>
                   <td>{p.num_vertices}</td>
                   <td>
