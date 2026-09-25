@@ -17,7 +17,11 @@ L.Icon.Default.mergeOptions({
 // Default view: Bengaluru, India. Judges can pan/zoom anywhere.
 const CENTER = [12.9716, 77.5946];
 
+<<<<<<< HEAD
 const PARCEL_PALETTE = ['#38bdf8', '#34d399', '#a78bfa', '#fbbf24', '#f87171', '#22d3ee'];
+=======
+const PALETTE = ['#38bdf8', '#34d399', '#a78bfa', '#fbbf24', '#f87171', '#22d3ee'];
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
 const DEFAULT_COLORS = {
   buildings: '#22c55e',
@@ -32,7 +36,11 @@ const DEFAULT_COLORS = {
 const LAYER_DEFS = [
   { key: 'buildings', label: 'Buildings' },
   { key: 'roads', label: 'Roads' },
+<<<<<<< HEAD
   { key: 'parcels', label: 'Parcels' },
+=======
+  { key: 'parcels', label: 'Parcels (approx)' },
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   { key: 'vegetation', label: 'Vegetation' },
   { key: 'water', label: 'Water' },
   { key: 'other', label: 'Other features' },
@@ -43,7 +51,11 @@ const MAX_SHAPES_PER_LAYER = 150;
 /**
  * Parcel polygons arrive in IMAGE-PIXEL coordinates, not geo coordinates.
  * They are rendered as a clearly-labelled SCHEMATIC overlay fitted around
+<<<<<<< HEAD
  * the map centre so judges can inspect shapes/areas.
+=======
+ * the map centre (aspect preserved) so judges can inspect shapes/areas.
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
  * The annotated image (true pixel geometry) is shown in ParcelResults.
  */
 function parcelsToLatLngs(parcelResult) {
@@ -53,7 +65,11 @@ function parcelsToLatLngs(parcelResult) {
   }
   const W = parcelResult.image_width;
   const H = parcelResult.image_height;
+<<<<<<< HEAD
   // Schematic extent ~0.02 deg.
+=======
+  // Schematic extent ~0.02 deg; preserves image aspect ratio.
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
   const extent = 0.02;
   return parcels.map((p, i) => {
     const positions = (p.polygon || []).map(([x, y]) => [
@@ -62,13 +78,21 @@ function parcelsToLatLngs(parcelResult) {
     ]);
     return {
       parcel: p,
+<<<<<<< HEAD
       color: PARCEL_PALETTE[i % PARCEL_PALETTE.length],
+=======
+      color: PALETTE[i % PALETTE.length],
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
       positions,
     };
   }).filter((r) => r.positions.length >= 3);
 }
 
+<<<<<<< HEAD
 /** Fake-but-local placement: drape the uploaded frame around the map centre. */
+=======
+/** Frame placement for the feature overlay: drape the uploaded frame around the map centre. */
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 function overlayBounds(dims) {
   const dLat = 0.06;
   const dLng = dLat * (dims.w / dims.h);
@@ -155,12 +179,27 @@ export default function MapView({ parcelResult, featureResult, overlayUrl }) {
   const reasons = featureResult?.reasons || {};
   const colors = { ...DEFAULT_COLORS, ...(featureResult?.feature_colors || {}) };
   const hasOverlay = overlay != null;
+<<<<<<< HEAD
   const hasAnything = hasParcels || hasOverlay;
+=======
+  const hasLayers = hasParcels || hasOverlay;
+
+  const parcelCount = parcelResult?.parcel_count ?? parcelOverlays.length;
+
+  const sub = hasParcels && hasOverlay
+    ? `Showing ${parcelOverlays.length} AI-estimated parcel polygon(s) + feature layers — schematic overlays, NOT legal cadastre.`
+    : hasParcels
+      ? `Showing ${parcelOverlays.length} AI-estimated parcel polygon(s) — schematic overlay, NOT legal cadastre. Click a polygon for details.`
+      : hasOverlay
+        ? 'Uploaded frame draped at the map centre — toggle feature layers (top-right).'
+        : 'Parcel polygons + feature layers will overlay here after the AI runs.';
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
   return (
     <section className="card map-wrap">
       <div className="map-head">
         <h2>2 · Interactive Map</h2>
+<<<<<<< HEAD
         <p className="sub">
           {hasOverlay
             ? 'Uploaded frame draped at the map centre — toggle feature layers (top-right).'
@@ -170,19 +209,31 @@ export default function MapView({ parcelResult, featureResult, overlayUrl }) {
         </p>
       </div>
       <MapContainer center={CENTER} zoom={hasParcels && !hasOverlay ? 15 : 14} scrollWheelZoom>
+=======
+        <p className="sub">{sub}</p>
+      </div>
+      <MapContainer center={CENTER} zoom={hasLayers ? 15 : 14} scrollWheelZoom>
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+<<<<<<< HEAD
         {!hasAnything && (
           <Marker position={CENTER}>
             <Popup>Demo anchor — Bengaluru. Run parcel or feature extraction to overlay AI layers.</Popup>
+=======
+        {!hasLayers && (
+          <Marker position={CENTER}>
+            <Popup>Demo anchor — Bengaluru. Run parcel extraction or feature extraction to see AI overlays.</Popup>
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
           </Marker>
         )}
         {hasOverlay && (
           <>
             <FitToOverlay bounds={overlay.bounds} active />
             <ImageOverlay url={overlayUrl} bounds={overlay.bounds} opacity={0.95} zIndex={1} />
+<<<<<<< HEAD
             <LayersControl position="topright" collapsed={false}>
               {LAYER_DEFS.map(({ key, label }) => {
                 const items = feats[key] || [];
@@ -219,6 +270,56 @@ export default function MapView({ parcelResult, featureResult, overlayUrl }) {
           {LAYER_DEFS.map(({ key, label }) => {
             const n = counts[key] ?? (feats[key] || []).length;
             const note = n === 0 && reasons[key] ? reasons[key] : null;
+=======
+          </>
+        )}
+        {hasLayers && (
+          <LayersControl position="topright" collapsed={false}>
+            <LayersControl.Overlay checked name={`Parcels (approx) (${hasParcels ? parcelCount : 0})`}>
+              <>
+                {parcelOverlays.map(({ parcel, color, positions }) => (
+                  <Polygon
+                    key={parcel.parcel_id}
+                    positions={positions}
+                    pathOptions={{ color, weight: 2, fillColor: color, fillOpacity: 0.25 }}
+                  >
+                    <Tooltip sticky>
+                      {parcel.parcel_id} · ~{parcel.area} m² (est.)
+                    </Tooltip>
+                    <Popup>
+                      <b>{parcel.parcel_id}</b> (AI-estimated, approximate)
+                      <br />Area: ~{parcel.area} m² · Perimeter: ~{parcel.perimeter} m
+                      <br />Confidence: {parcel.confidence} (heuristic)
+                      <br />Vertices: {parcel.num_vertices} · {parcel.method}
+                    </Popup>
+                  </Polygon>
+                ))}
+              </>
+            </LayersControl.Overlay>
+            {hasOverlay && ['buildings', 'roads', 'vegetation', 'water', 'other'].map((key) => {
+              const items = feats[key] || [];
+              const n = counts[key] ?? items.length;
+              const label = LAYER_DEFS.find((d) => d.key === key).label;
+              return (
+                <LayersControl.Overlay key={key} checked name={`${label} (${n})`}>
+                  <LayerShapes items={items} color={colors[key]} dims={overlay.dims} bounds={overlay.bounds} />
+                </LayersControl.Overlay>
+              );
+            })}
+          </LayersControl>
+        )}
+      </MapContainer>
+      {hasLayers ? (
+        <div className="layer-caption">
+          {LAYER_DEFS.map(({ key, label }) => {
+            const n = key === 'parcels'
+              ? (hasParcels ? parcelCount : 0)
+              : (hasOverlay ? (counts[key] ?? (feats[key] || []).length) : 0);
+            const note =
+              key === 'parcels'
+                ? (hasParcels ? parcelResult.disclaimer : 'run Extract Parcels for AI-estimated polygons')
+                : (!hasOverlay ? 'run Process Image (AI Features)' : (n === 0 && reasons[key] ? reasons[key] : null));
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
             return (
               <div key={key} className="layer-row" title={note || `${n} ${label.toLowerCase()} shown`}>
                 <span className="legend-dot" style={{ background: colors[key] }} />
@@ -228,6 +329,7 @@ export default function MapView({ parcelResult, featureResult, overlayUrl }) {
             );
           })}
           <p className="map-note">
+<<<<<<< HEAD
             Frame placed at the demo centre (no georeferencing yet) — geometry is in uploaded-image pixels.
             Empty layers are honest: see Detection panel for reasons.
             {hasParcels && ' Parcel polygons are shown in ParcelResults below (schematic map pins merged when a feature frame is draped).'}
@@ -239,6 +341,14 @@ export default function MapView({ parcelResult, featureResult, overlayUrl }) {
             ? '⚠️ Schematic overlay: image-pixel polygons fitted around the centre for inspection — NOT georeferenced survey data. True geometry is in the annotated image + GeoJSON below.'
             : '⚠️ No AI overlays yet — run Detect Buildings, Extract Parcels, or Process Features. Parcel boundaries are always AI-estimated/approximate.'}
         </p>
+=======
+            ⚠️ Schematic overlays: image-pixel geometry fitted around the centre for inspection — NOT georeferenced
+            survey data and NOT legal cadastre. True geometry is in the annotated images + GeoJSON below.
+          </p>
+        </div>
+      ) : (
+        <p className="map-note">⚠️ No AI overlays yet — run Detect Buildings, Extract Parcels, or Process Image (AI Features). Parcel boundaries are always AI-estimated/approximate.</p>
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
       )}
     </section>
   );

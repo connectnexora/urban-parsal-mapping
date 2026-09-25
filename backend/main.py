@@ -1,11 +1,21 @@
 """
 AI-Based Automated Urban Parcel Mapping and Cadastral Feature Extraction
+<<<<<<< HEAD
 FastAPI backend — buildings + approximate parcels + multi-class features.
 
 - YOLO model loads SAFELY at startup (server never crashes on missing
   weights; YOLO-dependent results come back honest/empty with reasons).
 - POST /upload: validate + save, return filename/dimensions/size/status.
 - POST /detect/buildings: YOLO building-only detection + annotated image.
+=======
+FastAPI backend — YOLO building detection + approximate parcel extraction
++ multi-class feature-extraction pipeline.
+
+- Models load SAFELY at startup (server never crashes on missing weights;
+  endpoints return HTTP 503 with instructions, YOLO-dependent feature
+  categories come back EMPTY with reasons — never fake results).
+- POST /detect/buildings: real YOLO inference -> boxes + annotated image.
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 - POST /detect/parcels: preprocessing -> segmentation (YOLO-seg when
   available, else OpenCV watershed/contours) -> boundary extraction ->
   polygon generation -> simplification -> area/perimeter estimates.
@@ -13,6 +23,11 @@ FastAPI backend — buildings + approximate parcels + multi-class features.
 - POST /detect/features: full pipeline -> features{buildings, roads,
   vegetation, water, other} with class/confidence/geometry per feature,
   plus an annotated image under outputs/ served at /outputs/<file>.
+<<<<<<< HEAD
+=======
+- Vegetation/water come from classical colour segmentation (no model
+  needed). Roads need a road-capable model; otherwise honestly empty.
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 """
 
 from contextlib import asynccontextmanager
@@ -85,10 +100,17 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
+<<<<<<< HEAD
 # Prototype cap — drone frames are big, but bound memory per request.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 APP_VERSION = "0.4.0"
+=======
+APP_VERSION = "0.4.0"
+
+# Prototype cap — drone frames are big, but bound memory per request.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +142,11 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Urban Parcel Mapping API",
+<<<<<<< HEAD
     description="Drone imagery -> YOLO buildings + approximate parcels + multi-class features.",
+=======
+    description="Drone imagery -> YOLO buildings + approximate parcel polygons + multi-class feature extraction.",
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
     version=APP_VERSION,
     lifespan=lifespan,
 )
@@ -215,8 +241,12 @@ async def _store_upload(file: UploadFile) -> dict:
         raise
 
     return {
+<<<<<<< HEAD
         "filename": safe_name,
+=======
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
         "path": str(dest),
+        "filename": safe_name,
         "original_filename": original,
         "width": width,
         "height": height,
@@ -281,15 +311,26 @@ def info():
             "2b. Approximate parcel polygons — /detect/parcels "
             "(preprocessing -> segmentation -> boundaries -> polygons -> "
             "simplification -> area; NOT legal cadastre)",
+<<<<<<< HEAD
             "2c. Full feature pipeline — /detect/features "
             "(buildings/roads/vegetation/water/other)",
             "3. Annotated images + GeoJSON saved to outputs/, served at /outputs/<file>",
             "4. Interactive map overlays per feature/parcel type — frontend layers",
+=======
+            "2c. Multi-class features — /detect/features "
+            "(buildings / roads / vegetation / water / other)",
+            "3. Annotated images + GeoJSON saved to outputs/, served at /outputs/<file>",
+            "4. Interactive map overlays — parcel polygons + feature layers in MapView",
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
         ],
         "stack": {
             "frontend": "React + Vite + Leaflet",
             "backend": "FastAPI",
+<<<<<<< HEAD
             "ai": "Ultralytics YOLO (+YOLO-seg when available) + classical colour/watershed segmentation",
+=======
+            "ai": "Ultralytics YOLO (+YOLO-seg when available) / OpenCV watershed fallback + classical colour segmentation",
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
         },
         "feature_types": list(FEATURE_TYPES),
         "ai_status": "ready" if status["loaded"] else "model_missing",
@@ -321,7 +362,11 @@ async def upload(file: UploadFile = File(...)):
     No AI detection runs on this endpoint.
     """
     stored = await _store_upload(file)
+<<<<<<< HEAD
     return _public_upload_meta(stored)
+=======
+    return {k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")}
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
 
 
 @app.post("/api/upload", status_code=201)
@@ -334,8 +379,14 @@ async def upload_image(file: UploadFile = File(...)):
     return JSONResponse(
         status_code=201,
         content={
+<<<<<<< HEAD
             **_public_upload_meta(stored),
             "message": "File received. Run POST /detect/buildings, /detect/parcels or /detect/features for AI analysis.",
+=======
+            **{k: stored[k] for k in ("filename", "original_filename", "width", "height", "size_bytes", "status")},
+            "message": "File received. Run POST /detect/buildings, /detect/parcels or /detect/features for AI analysis.",
+            "ai_status": "not_implemented",
+>>>>>>> 8995e900b0043217f74860bc19fc8f10bd2f7c94
             "detections": None,  # explicitly null — no fake results
         },
     )
