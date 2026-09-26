@@ -523,7 +523,7 @@ export default function UploadPanel({
   return (
     <section className="card">
       <h2>1 · Upload &amp; AI Analysis</h2>
-      <p className="sub">Upload a drone/aerial image, then run real inference. No fake results.</p>
+      <p className="sub">Choose an image — it uploads to the backend automatically. Then run the one-click full analysis. No fake results.</p>
 
       <ol className="steps">
         <li className="done">✓ Project structure ready</li>
