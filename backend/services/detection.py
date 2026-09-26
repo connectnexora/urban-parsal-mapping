@@ -390,17 +390,32 @@ def run_detection(
 
     warning: str | None = None
     if not _supports_buildings:
-        warning = (
-            "The loaded model (%s) does not have a 'building' class, so no "
-            "building-specific detection is possible with it. All %d raw "
-            "detection(s) are returned with their real class names and "
-            "building_count counts only building-class boxes. %s"
-            % (
-                (Path(_model_path).name if _model_path else "unknown"),
-                len(all_dets),
-                REQUIRED_MODEL_MESSAGE,
+        if classical_dets:
+            warning = (
+                "The loaded model (%s) has no 'building' class (generic COCO fallback), "
+                "so buildings were detected with a classical rooftop detector "
+                "(colour + edge rectangularity, inpainted parcel overlays, "
+                "vegetation rejection) computed from this image. %d building(s) "
+                "reported with heuristic confidence; %d raw YOLO detection(s) "
+                "with real class names are preserved in all_detections."
+                % (
+                    (Path(_model_path).name if _model_path else "unknown"),
+                    len(classical_dets),
+                    len(all_dets) - len(classical_dets),
+                )
             )
-        )
+        else:
+            warning = (
+                "The loaded model (%s) does not have a 'building' class, so no "
+                "building-specific detection is possible with it. All %d raw "
+                "detection(s) are returned with their real class names and "
+                "building_count counts only building-class boxes. %s"
+                % (
+                    (Path(_model_path).name if _model_path else "unknown"),
+                    len(all_dets),
+                    REQUIRED_MODEL_MESSAGE,
+                )
+            )
 
     return {
         "detections": building_dets,

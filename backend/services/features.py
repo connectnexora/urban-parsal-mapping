@@ -293,9 +293,43 @@ def extract_features(
     for key in ("buildings", "roads", "other"):
         features[key] = grouped[key]
 
+    # Classical rooftop fallback: when YOLO has no building-class boxes
+    # (generic COCO weights or no model), compute rooftops from the image so
+    # buildings/features counts match visible houses instead of staying 0.
+    if not features["buildings"]:
+        try:
+            try:
+                from services.rooftops import detect_rooftops
+            except ImportError:
+                from backend.services.rooftops import detect_rooftops
+            fallback = detect_rooftops(image_path, conf_threshold=0.25) or []
+            for det in fallback:
+                try:
+                    x1, y1, x2, y2 = (int(v) for v in det["bbox"])
+                except Exception:
+                    continue
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                features["buildings"].append(
+                    {
+                        "class": "building",
+                        "confidence": float(det.get("confidence", 0.0)),
+                        "bbox": [x1, y1, x2, y2],
+                        "polygon": [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+                        "area_px": (x2 - x1) * (y2 - y1),
+                        "method": det.get("method", "classical-rooftop"),
+                    }
+                )
+        except Exception:
+            pass
+
     if yolo_available:
         if not features["buildings"]:
-            reasons["buildings"] = "Model ran successfully but no building-class boxes were above the confidence threshold."
+            # YOLO ran but found no building labels; fallback above may have
+            # filled buildings. Only report "none found" when still empty.
+            reasons["buildings"] = "Model ran successfully but no building-class boxes were above the confidence threshold; classical rooftop fallback also found none."
+        elif any(d.get("method") == "classical-rooftop" for d in features["buildings"]):
+            reasons["buildings"] = None  # computed geometry present; no warning needed
         if not features["roads"]:
             reasons["roads"] = "The loaded model returned no road-class labels (e.g. road/street/highway) above threshold."
         if not features["other"]:
@@ -303,9 +337,11 @@ def extract_features(
     else:
         if not features["buildings"]:
             reasons["buildings"] = (
-                "YOLO model unavailable in this backend (missing weights or ultralytics). "
-                "Add a building-capable weight to models/ to enable building detection."
+                "YOLO model unavailable in this backend (missing weights or ultralytics) "
+                "and the classical rooftop fallback found no rectangular rooftops."
             )
+        else:
+            reasons["buildings"] = None  # classical fallback supplied geometry
         if not features["roads"]:
             reasons["roads"] = (
                 "Road extraction needs a road-capable model (YOLO-seg with road/street classes "
