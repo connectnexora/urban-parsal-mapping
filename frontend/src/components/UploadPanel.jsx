@@ -63,14 +63,11 @@ export default function UploadPanel({
   setFeaturesError,
   isExtracting,
   setIsExtracting,
-<<<<<<< HEAD
   extractKind,
   setExtractKind,
-=======
   recordTiming,
   demoMode,
   onEnterDemo,
->>>>>>> eadd6e615173ec3830bb19c92df9f3d697e5f50f
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);

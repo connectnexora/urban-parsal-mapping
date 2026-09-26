@@ -6,14 +6,9 @@ import { resolveAssetUrl } from '../services/api.js';
  * POST /detect/parcels response — nothing hardcoded. Always discloses
  * that boundaries are AI-estimated/approximate, not legal cadastre.
  */
-<<<<<<< HEAD
-export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, extractKind, stepNo = 5 }) {
-  const running = isExtracting && extractKind === 'parcels';
+export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, extractKind, stepNo = 5, selectedParcelId, onSelectParcel, onGenerateReport }) {
+  const running = isExtracting && (!extractKind || extractKind === 'parcels');
   if (running) {
-=======
-export default function ParcelResults({ parcelResult, error, originalPreview, isExtracting, selectedParcelId, onSelectParcel, onGenerateReport }) {
-  if (isExtracting) {
->>>>>>> eadd6e615173ec3830bb19c92df9f3d697e5f50f
     return (
       <section className="card detect-section">
         <h2>{stepNo} · AI Parcel Boundaries (approximate)</h2>
