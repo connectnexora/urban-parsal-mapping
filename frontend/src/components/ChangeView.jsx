@@ -165,15 +165,15 @@ export default function ChangeView({
 
       <div className="detect-grid">
         <div>
-          <label className="drop">
-            {fileA ? `A (older): ${fileA.name}` : 'Image A — Older image (click to choose)'}
+          <label className="drop" title={fileA ? fileA.name : undefined}>
+            {fileA ? <span className="drop-name">A (older): {fileA.name}</span> : 'Image A — Older image (click to choose)'}
             <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={pick('A')} hidden />
           </label>
           {prevA && <img className="preview" src={prevA} alt="Older frame preview (Image A)" />}
         </div>
         <div>
-          <label className="drop">
-            {fileB ? `B (newer): ${fileB.name}` : 'Image B — Newer image (click to choose)'}
+          <label className="drop" title={fileB ? fileB.name : undefined}>
+            {fileB ? <span className="drop-name">B (newer): {fileB.name}</span> : 'Image B — Newer image (click to choose)'}
             <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={pick('B')} hidden />
           </label>
           {prevB && <img className="preview" src={prevB} alt="Newer frame preview (Image B)" />}

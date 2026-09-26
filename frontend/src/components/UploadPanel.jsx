@@ -380,8 +380,8 @@ export default function UploadPanel({
         <li>○ Report</li>
       </ol>
 
-      <label className="drop">
-        {file ? file.name : 'Click to choose image (JPG / JPEG / PNG / TIF)'}
+      <label className="drop" title={file ? file.name : undefined}>
+        {file ? <span className="drop-name">{file.name}</span> : 'Click to choose image (JPG / JPEG / PNG / TIF)'}
         <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={onSelect} hidden />
       </label>
 
