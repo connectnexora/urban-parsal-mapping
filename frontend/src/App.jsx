@@ -31,10 +31,8 @@ export default function App() {
   const [originalPreview, setOriginalPreview] = useState(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
-<<<<<<< HEAD
   // Which extraction is running: 'features' | 'parcels' | null.
   const [extractKind, setExtractKind] = useState(null);
-=======
   // Parcel selected on the map (popup + sidebar details).
   const [selectedParcelId, setSelectedParcelId] = useState(null);
   // Optional change-detection result (Image A older vs Image B newer).
@@ -129,7 +127,6 @@ export default function App() {
     setUploadedInfo(null);
     setReportOpen(false);
   };
->>>>>>> eadd6e615173ec3830bb19c92df9f3d697e5f50f
 
   return (
     <>
@@ -157,10 +154,8 @@ export default function App() {
           setParcelError={setParcelError}
           isExtracting={isExtracting}
           setIsExtracting={setIsExtracting}
-<<<<<<< HEAD
           extractKind={extractKind}
           setExtractKind={setExtractKind}
-=======
           recordTiming={recordTiming}
           demoMode={demoMode}
           onEnterDemo={enterDemo}
@@ -173,7 +168,6 @@ export default function App() {
           selectedParcelId={selectedParcelId}
           onSelectParcel={selectParcel}
           changeResult={changeResult}
->>>>>>> eadd6e615173ec3830bb19c92df9f3d697e5f50f
         />
         <ResultsPanel
           backendStatus={backendStatus}
@@ -219,10 +213,8 @@ export default function App() {
         error={parcelError}
         originalPreview={originalPreview}
         isExtracting={isExtracting}
-<<<<<<< HEAD
         extractKind={extractKind}
         stepNo={detection || features ? 4 + (detection ? 1 : 0) + (features ? 1 : 0) : 5}
-=======
         selectedParcelId={selectedParcelId}
         onSelectParcel={selectParcel}
         onGenerateReport={() => setReportOpen(true)}
@@ -246,7 +238,6 @@ export default function App() {
         setIsComparing={setIsComparing}
         recordTiming={recordTiming}
         setBackendStatus={setBackendStatus}
->>>>>>> eadd6e615173ec3830bb19c92df9f3d697e5f50f
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>

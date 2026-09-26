@@ -148,6 +148,37 @@ def find_candidate_weights() -> List[Path]:
     return candidates
 
 
+def _allow_legacy_torch_weights() -> None:
+    """Restore legacy `torch.load` behaviour for YOLO checkpoints.
+
+    torch>=2.6 defaults `torch.load` to `weights_only=True`, which rejects
+    ultralytics checkpoints (allowlisting every torch.nn global is
+    whack-a-mole). We only load weights we deliberately chose — the official
+    ultralytics CDN fallback and the local `models/` directory — so forcing
+    the legacy default for this process is acceptable for this prototype.
+    Safe to call repeatedly; patches at most once. Never raises.
+    """
+    try:
+        import functools
+
+        import torch
+
+        if getattr(torch.load, "_upm_legacy_weights", False):
+            return
+
+        _orig_load = torch.load
+
+        @functools.wraps(_orig_load)
+        def _patched(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _orig_load(*args, **kwargs)
+
+        _patched._upm_legacy_weights = True  # type: ignore[attr-defined]
+        torch.load = _patched  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
 def load_model() -> Dict[str, Any]:
     """Load the YOLO model safely (called once at backend startup).
 
@@ -179,6 +210,7 @@ def load_model() -> Dict[str, Any]:
     last_error: Exception | None = None
 
     search_order: List[str] = tried + [GENERIC_FALLBACK_WEIGHT]
+    _allow_legacy_torch_weights()
     for weight in search_order:
         try:
             yolo = YOLO(weight)
