@@ -87,6 +87,9 @@ export default function UploadPanel({
   const [fullRunning, setFullRunning] = useState(false);
   const [fullStage, setFullStage] = useState('');
   const urlRef = useRef(null);
+  // Guards stale auto-uploads: if the user picks file B while file A is
+  // still uploading, A's late response is discarded.
+  const uploadToken = useRef(0);
 
   const refreshStatuses = async () => {
     try {
@@ -162,6 +165,7 @@ export default function UploadPanel({
    */
   const doUpload = async (target, { announce = true } = {}) => {
     if (!target) return null;
+    const token = ++uploadToken.current;
     if (announce) {
       setBusy(true);
       setProgress(0);
@@ -184,6 +188,7 @@ export default function UploadPanel({
       }
     }
     if (res) {
+      if (token !== uploadToken.current) return res; // stale: newer file selected
       if (announce) {
         recordTiming?.('upload', performance.now() - t0, {
           filename: res.filename || target.name,
