@@ -68,10 +68,7 @@ export default function UploadPanel({
   recordTiming,
   demoMode,
   onEnterDemo,
-<<<<<<< HEAD
-=======
   resetSignal,
->>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);

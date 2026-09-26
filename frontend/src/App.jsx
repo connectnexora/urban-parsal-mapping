@@ -130,8 +130,6 @@ export default function App() {
     setUploadedInfo(null);
     setReportOpen(false);
   };
-<<<<<<< HEAD
-=======
 
   // Global reset: clears live AI results, demo state, change results,
   // selection, timings and errors. Local file inputs in UploadPanel /
@@ -151,7 +149,6 @@ export default function App() {
     || originalPreview || selectedParcelId || demoMode !== 'off'
     || Object.keys(timings || {}).length || uploadedInfo || reportOpen,
   );
->>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
 
   return (
     <>
@@ -266,10 +263,7 @@ export default function App() {
         setIsComparing={setIsComparing}
         recordTiming={recordTiming}
         setBackendStatus={setBackendStatus}
-<<<<<<< HEAD
-=======
         resetSignal={resetSignal}
->>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>
