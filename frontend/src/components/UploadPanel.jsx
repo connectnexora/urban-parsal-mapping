@@ -603,27 +603,29 @@ export default function UploadPanel({
 
       <div style={{ height: 10 }} />
 
-      <button className="btn full-run" onClick={runFullAnalysis} disabled={!file || !!fileError || working} title="Upload (if needed) then run buildings + parcels + features in one go">
-        {fullRunning ? `Running full analysis… (${fullStage || 'starting'})` : 'Upload & Run Full AI Analysis'}
-      </button>
-      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || working}>
-        {busy && !fullRunning ? 'Uploading…' : 'Upload to Backend'}
-      </button>
-      <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || working}>
-        {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
-      </button>
-      <button className="btn parcel" onClick={onExtractParcels} disabled={!file || !!fileError || working}>
-        {isExtracting && extractKind === 'parcels' ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
-      </button>
-      <button className="btn process" onClick={() => runInference('features')} disabled={!file || !!fileError || working}>
-        {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
-      </button>
-      <button className="btn ghost" onClick={testConnection} disabled={working}>
-        Test Backend Connection
-      </button>
-      <button className="btn ghost" onClick={onEnterDemo} disabled={working || demoMode !== 'off'} title="Load the prepared demo dataset (precomputed results)">
-        {demoMode === 'loading' ? 'Loading demo…' : demoMode === 'active' ? 'Demo active ✓' : 'Try Demo Dataset'}
-      </button>
+      <div className="upload-actions">
+        <button className="btn full-run" onClick={runFullAnalysis} disabled={!file || !!fileError || working} title="Upload (if needed) then run buildings + parcels + features in one go">
+          {fullRunning ? `Running full analysis… (${fullStage || 'starting'})` : 'Upload & Run Full AI Analysis'}
+        </button>
+        <button className="btn sub" onClick={onUpload} disabled={!file || !!fileError || working}>
+          {busy && !fullRunning ? 'Uploading…' : 'Upload to Backend'}
+        </button>
+        <button className="btn sub" onClick={() => runInference('buildings')} disabled={!file || !!fileError || working}>
+          {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
+        </button>
+        <button className="btn sub" onClick={onExtractParcels} disabled={!file || !!fileError || working}>
+          {isExtracting && extractKind === 'parcels' ? 'Extracting parcels…' : 'Extract Parcels (polygons)'}
+        </button>
+        <button className="btn sub" onClick={() => runInference('features')} disabled={!file || !!fileError || working}>
+          {isExtracting && extractKind === 'features' ? 'Extracting features…' : 'Process Image (AI Features)'}
+        </button>
+        <button className="btn ghost" onClick={testConnection} disabled={working}>
+          Test Backend Connection
+        </button>
+        <button className="btn ghost" onClick={onEnterDemo} disabled={working || demoMode !== 'off'} title="Load the prepared demo dataset (precomputed results)">
+          {demoMode === 'loading' ? 'Loading demo…' : demoMode === 'active' ? 'Demo active ✓' : 'Try Demo Dataset'}
+        </button>
+      </div>
 
       {uploaded && (
         <div className="upload-summary">
