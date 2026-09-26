@@ -428,7 +428,10 @@ export default function UploadPanel({
     try {
       setFullStage('upload');
       setMessage('Stage 1/4: uploading to backend…');
-      const up = await doUpload(file);
+      // "Upload (if needed)": selecting a file already auto-uploads it, and
+      // every /detect/* endpoint re-stores the file server-side anyway — so
+      // only re-upload when we have no server confirmation for this file.
+      const up = uploaded ? { alreadyUploaded: true } : await doUpload(file);
       if (!up) {
         setMessage('Stage 1/4 failed: could not upload. Check the backend is running, then retry.');
         return;
@@ -600,7 +603,7 @@ export default function UploadPanel({
 
       <div style={{ height: 10 }} />
 
-      <button className="btn process" onClick={runFullAnalysis} disabled={!file || !!fileError || working} title="Upload (if needed) then run buildings + parcels + features in one go">
+      <button className="btn full-run" onClick={runFullAnalysis} disabled={!file || !!fileError || working} title="Upload (if needed) then run buildings + parcels + features in one go">
         {fullRunning ? `Running full analysis… (${fullStage || 'starting'})` : 'Upload & Run Full AI Analysis'}
       </button>
       <button className="btn" onClick={onUpload} disabled={!file || !!fileError || working}>
