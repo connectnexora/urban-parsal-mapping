@@ -173,54 +173,59 @@ export default function UploadPanel({
       setMessageOk(false);
       setUploaded(null);
     }
-    const t0 = performance.now();
-    let res = null;
-    let lastErr = null;
-    for (let attempt = 0; attempt < 2 && !res; attempt += 1) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        res = await uploadImage(target, announce ? setProgress : undefined);
-      } catch (err) {
-        lastErr = err;
-        // Retry only when the backend never responded (offline/flake).
-        if (err.response) break;
-        if (attempt === 0 && announce) setMessage('Upload hiccup — retrying…');
+    try {
+      const t0 = performance.now();
+      let res = null;
+      let lastErr = null;
+      for (let attempt = 0; attempt < 2 && !res; attempt += 1) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          res = await uploadImage(target, announce ? setProgress : undefined);
+        } catch (err) {
+          lastErr = err;
+          // Retry only when the backend never responded (offline/flake).
+          if (err.response) break;
+          if (attempt === 0 && announce) setMessage('Upload hiccup — retrying…');
+        }
       }
-    }
-    if (res) {
-      if (token !== uploadToken.current) return res; // stale: newer file selected
+      if (res) {
+        if (token !== uploadToken.current) return res; // stale: newer file selected
+        if (announce) {
+          recordTiming?.('upload', performance.now() - t0, {
+            filename: res.filename || target.name,
+            width: res.width,
+            height: res.height,
+            size_bytes: res.size_bytes ?? target.size,
+          });
+          setBackendStatus('ok');
+          setUploaded(res);
+          setProgress(100);
+          setMessage(`Saved as ${res.filename} — ${res.width}×${res.height} px, ${formatBytes(res.size_bytes)}.`);
+          setMessageOk(true);
+        }
+        return res;
+      }
       if (announce) {
-        recordTiming?.('upload', performance.now() - t0, {
-          filename: res.filename || target.name,
-          width: res.width,
-          height: res.height,
-          size_bytes: res.size_bytes ?? target.size,
-        });
-        setBackendStatus('ok');
-        setUploaded(res);
-        setProgress(100);
-        setMessage(`Saved as ${res.filename} — ${res.width}×${res.height} px, ${formatBytes(res.size_bytes)}.`);
-        setMessageOk(true);
+        if (token !== uploadToken.current) return null; // stale failure: ignore
+        if (lastErr?.response) {
+          setBackendStatus('ok'); // reachable — it rejected the file
+          setMessage(`Upload rejected: ${lastErr.response?.data?.detail || `HTTP ${lastErr.response.status}`}.`);
+        } else {
+          setBackendStatus('down');
+          setMessage(`Upload failed: ${lastErr?.message || 'network error'}. Is the backend running at ${API_BASE}? Will retry automatically on Run.`);
+        }
+        setMessageOk(false);
       }
-      return res;
+      return null;
+    } finally {
+      if (announce) setBusy(false);
     }
-    if (announce) {
-      if (lastErr?.response) {
-        setBackendStatus('ok'); // reachable — it rejected the file
-        setMessage(`Upload rejected: ${lastErr.response?.data?.detail || `HTTP ${lastErr.response.status}`}.`);
-      } else {
-        setBackendStatus('down');
-        setMessage(`Upload failed: ${lastErr?.message || 'network error'}. Is the backend running at ${API_BASE}? Will retry automatically on Run.`);
-      }
-      setMessageOk(false);
-    }
-    return null;
   };
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
-    if (!f || busy || fullRunning || isDetecting || isExtracting) return;
+    if (!f || fullRunning || isDetecting || isExtracting) return;
     clearPreview();
     setUploaded(null);
     setProgress(null);
