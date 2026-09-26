@@ -302,14 +302,26 @@ button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---- Upload system ---- */
 .btn.process { margin-top: 8px; }
-/* Primary one-click action: full pipeline. Distinct from .btn.process so
-   the CTA doesn't blend with the single-stage buttons below it. */
+/* Consistent rhythm for the upload button stack (wraps long labels too). */
+.upload-actions { display: flex; flex-direction: column; }
+.upload-actions .btn + .btn { margin-top: 8px; }
+/* Primary one-click action: full pipeline. Distinct from the secondary
+   buttons so the CTA doesn't blend into the row of stage buttons. */
 .btn.full-run {
   font-size: 15px; padding: 14px;
   background: linear-gradient(135deg, #34d399, #38bdf8 55%, #a78bfa);
   box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
 }
 .btn.full-run:hover:not(:disabled) { filter: brightness(1.08); }
+/* Secondary stage actions: neutral surface, they recede behind the CTA. */
+.btn.sub {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--card-border);
+  color: var(--text); font-weight: 500;
+}
+.btn.sub:hover:not(:disabled) {
+  border-color: var(--accent); background: rgba(56, 189, 248, 0.1);
+}
 .mono.ok-text { color: var(--success); }
 
 .alert-err {
@@ -516,6 +528,7 @@ button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   /* Primary actions get full-width 44px+ touch targets; small buttons stay inline. */
   .btn { min-height: 44px; }
   .btn.small { min-height: 36px; }
+  .btn.full-run { font-size: 14px; padding: 13px 12px; }
   .map-head-row .btn.small { width: 100%; }
 
   .detect-section { margin: 0 12px 14px; }
