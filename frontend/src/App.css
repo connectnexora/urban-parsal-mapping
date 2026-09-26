@@ -298,6 +298,14 @@ button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---- Upload system ---- */
 .btn.process { margin-top: 8px; }
+/* Primary one-click action: full pipeline. Distinct from .btn.process so
+   the CTA doesn't blend with the single-stage buttons below it. */
+.btn.full-run {
+  font-size: 15px; padding: 14px;
+  background: linear-gradient(135deg, #34d399, #38bdf8 55%, #a78bfa);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.28);
+}
+.btn.full-run:hover:not(:disabled) { filter: brightness(1.08); }
 .mono.ok-text { color: var(--success); }
 
 .alert-err {
