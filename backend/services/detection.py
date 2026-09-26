@@ -346,6 +346,44 @@ def run_detection(
         raise RuntimeError(f"Failed to parse YOLO results: {exc}")
 
     building_dets = [d for d in all_dets if _is_building_label(d["class"])]
+    classical_dets: List[Dict[str, Any]] = []
+    if not _supports_buildings:
+        # Generic COCO weights have no building class, so YOLO alone would
+        # always report 0 buildings on aerial imagery. Fall back to a real
+        # classical rooftop detector (computed from the image, never invented)
+        # so the count reflects visible houses.
+        try:
+            try:
+                from services.rooftops import detect_rooftops
+            except ImportError:  # `uvicorn backend.main:app` from project root
+                from backend.services.rooftops import detect_rooftops
+            classical_dets = detect_rooftops(image_path, conf_threshold=conf) or []
+        except Exception:
+            classical_dets = []
+        if classical_dets:
+            # Keep raw YOLO boxes for transparency, add classical rooftops.
+            # Strip the internal `method` key from all_detections entries?
+            # No — keep it: it documents provenance. The /detect/buildings
+            # `detections` field stays building-only.
+            for det in classical_dets:
+                all_dets.append(
+                    {
+                        "class": det.get("class", "building"),
+                        "class_id": det.get("class_id", 0),
+                        "confidence": det.get("confidence", 0.0),
+                        "bbox": det.get("bbox"),
+                        "method": det.get("method", "classical-rooftop"),
+                    }
+                )
+            building_dets = [
+                {
+                    "class": d.get("class", "building"),
+                    "class_id": d.get("class_id", 0),
+                    "confidence": d.get("confidence", 0.0),
+                    "bbox": d.get("bbox"),
+                }
+                for d in classical_dets
+            ]
     count = len(building_dets)
     avg = round(sum(d["confidence"] for d in building_dets) / count, 4) if count else 0.0
     width, height = _read_image_size(image_path)
