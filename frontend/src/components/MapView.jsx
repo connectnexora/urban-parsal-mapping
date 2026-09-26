@@ -119,6 +119,20 @@ export default function MapView({
   changeResult,
 }) {
   const [fitKey, setFitKey] = useState(0);
+  // Mobile: collapse the layer list so it doesn't cover the map, move zoom
+  // to the thumb corner, and don't hijack page scroll with wheel-zoom
+  // (coarse pointers get tap/drag/pinch instead).
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 640px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia?.('(max-width: 640px)');
+    if (!mq) return undefined;
+    const onChange = (e) => setIsNarrow(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  const isCoarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
   useEffect(() => {
     // Ensure the Leaflet map sizes correctly after first paint.
@@ -318,11 +332,11 @@ export default function MapView({
       <MapContainer
         center={CENTER}
         zoom={hasAnything ? 15 : 14}
-        scrollWheelZoom
+        scrollWheelZoom={!isCoarse}
         zoomControl={false}
       >
-        <ZoomControl position="topleft" />
-        <LayersControl position="topright" collapsed={false}>
+        <ZoomControl position={isNarrow ? 'bottomright' : 'topleft'} />
+        <LayersControl position="topright" collapsed={isNarrow}>
           <LayersControl.BaseLayer checked name="Streets (OSM)">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

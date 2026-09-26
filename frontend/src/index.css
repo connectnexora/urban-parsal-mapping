@@ -13,6 +13,12 @@
 
 * { box-sizing: border-box; }
 
+html {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -21,6 +27,12 @@ body {
     var(--bg);
   color: var(--text);
   min-height: 100vh;
+  overflow-x: clip;
 }
+
+img, video, canvas, svg { max-width: 100%; }
+
+button, input, select, textarea { font: inherit; }
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 
 #root { min-height: 100vh; }

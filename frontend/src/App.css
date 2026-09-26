@@ -468,3 +468,87 @@ button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .boot-chips span, .boot-stages li.active .boot-dot { animation: none; }
   .boot-scan { display: none; }
 }
+
+/* ---- Responsive / mobile ---- */
+/* Grid children must be allowed to shrink or wide children (map, tables)
+   force horizontal page scroll on narrow screens. */
+.layout > *, .card, .map-wrap, .detect-section { min-width: 0; }
+
+@media (max-width: 860px) {
+  .leaflet-container { height: 420px; }
+  .detect-section { margin: 0 16px 16px; }
+  .parcel-detail { margin: 0 16px 16px; }
+}
+
+@media (max-width: 640px) {
+  .navbar {
+    flex-direction: column; align-items: stretch; gap: 10px;
+    padding: 12px 14px;
+  }
+  .brand h1 { font-size: 14px; }
+  .brand p { font-size: 11px; }
+  .nav-pills { justify-content: flex-start; }
+  .pill { font-size: 11px; padding: 8px 12px; }
+
+  .layout { grid-template-columns: 1fr; padding: 12px 12px 16px; gap: 12px; }
+  .card { padding: 14px; border-radius: 14px; }
+  .card h2 { font-size: 15px; }
+
+  /* Primary actions get full-width 44px+ touch targets; small buttons stay inline. */
+  .btn { min-height: 44px; }
+  .btn.small { min-height: 36px; }
+  .map-head-row .btn.small { width: 100%; }
+
+  .detect-section { margin: 0 12px 14px; }
+  .parcel-detail { margin: 0 12px 14px; }
+  .parcel-detail-head { flex-direction: column; }
+  .parcel-grid { grid-template-columns: 1fr 1fr; }
+
+  .leaflet-container { height: 340px; }
+  .map-head { padding: 12px 14px 0; }
+  .map-head-row { padding: 12px 14px 0; }
+  .map-note { margin: 10px 14px 14px; }
+  .layer-caption { padding: 4px 14px 0; }
+  /* Leaflet controls: bigger tap targets, smaller attribution. */
+  .leaflet-control-zoom a { width: 36px !important; height: 36px !important; line-height: 36px !important; }
+  .leaflet-control-layers { font-size: 13px; max-width: 62vw; }
+  .leaflet-control-attribution { font-size: 9px; max-width: 70vw; }
+
+  .detect-grid { grid-template-columns: 1fr; }
+  .detect-grid img { max-height: 320px; }
+  .detect-badges .badge { font-size: 11px; padding: 6px 10px; }
+
+  .table-wrap { -webkit-overflow-scrolling: touch; margin-left: -14px; margin-right: -14px; padding: 0 14px; }
+  .det-table { font-size: 12px; min-width: 560px; }
+  .det-table th, .det-table td { padding: 8px; white-space: nowrap; }
+  .det-table td.mono { white-space: nowrap; }
+
+  .meta-row { flex-wrap: wrap; row-gap: 2px; }
+  .preview { max-height: 180px; }
+  .drop { padding: 16px 12px; }
+
+  .conf-row { flex-wrap: wrap; }
+  .conf-row input[type="range"] { flex: 1 1 100%; min-height: 32px; }
+
+  .compare-track { aspect-ratio: 4 / 3; max-height: 420px; }
+  .compare-single img, .detect-grid img { object-fit: contain; }
+
+  .report-backdrop { padding: 12px 8px; }
+  .report-sheet { border-radius: 14px; }
+  .report-head h2 { font-size: 17px; }
+
+  .boot { padding: 12px; }
+  .boot-inner { padding: 20px 18px; max-height: 92dvh; overflow-y: auto; }
+  .boot-viewport { min-height: 220px; }
+
+  .footer { padding: 12px 14px; flex-direction: column; gap: 4px; }
+}
+
+@media (max-width: 480px) {
+  .leaflet-container { height: 300px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stats-3 { grid-template-columns: 1fr 1fr; }
+  .stat .v { font-size: 18px; }
+  .parcel-grid { grid-template-columns: 1fr; }
+  .brand-icon { width: 36px; height: 36px; font-size: 19px; }
+}
