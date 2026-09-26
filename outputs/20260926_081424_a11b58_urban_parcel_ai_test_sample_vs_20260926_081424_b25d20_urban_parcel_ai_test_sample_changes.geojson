@@ -1,0 +1,850 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "coordinate_system": "image_pixels",
+    "reference": "image_a",
+    "image_a_px": [
+      1400,
+      1000
+    ],
+    "image_b_px": [
+      1400,
+      1000
+    ],
+    "disclaimer": "Detected changes are AI estimates for visualisation and analysis only. They must be verified by a surveyor or relevant authority before any planning, legal or cadastral use. NOT legally valid boundaries."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-001",
+        "confidence": 0.95,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 1328.22
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1.2,
+              542.5
+            ],
+            [
+              1.2,
+              942.7
+            ],
+            [
+              333.7,
+              942.7
+            ],
+            [
+              332.5,
+              542.5
+            ],
+            [
+              1.2,
+              542.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-002",
+        "confidence": 0.95,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 1051.46
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              725.7,
+              564.7
+            ],
+            [
+              724.5,
+              914.7
+            ],
+            [
+              1025.5,
+              914.7
+            ],
+            [
+              1025.5,
+              564.7
+            ],
+            [
+              725.7,
+              564.7
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-003",
+        "confidence": 0.774,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 964.74
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1.2,
+              91.0
+            ],
+            [
+              1.2,
+              417.7
+            ],
+            [
+              333.7,
+              416.5
+            ],
+            [
+              61.8,
+              399.0
+            ],
+            [
+              263.7,
+              395.5
+            ],
+            [
+              248.5,
+              312.7
+            ],
+            [
+              332.5,
+              313.8
+            ],
+            [
+              315.0,
+              93.3
+            ],
+            [
+              1.2,
+              91.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-004",
+        "confidence": 0.947,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 858.19
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              395.5,
+              91.0
+            ],
+            [
+              394.3,
+              394.3
+            ],
+            [
+              677.8,
+              395.5
+            ],
+            [
+              677.8,
+              92.2
+            ],
+            [
+              395.5,
+              91.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-005",
+        "confidence": 0.52,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 582.05
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1069.8,
+              542.5
+            ],
+            [
+              1341.7,
+              561.2
+            ],
+            [
+              1338.2,
+              844.7
+            ],
+            [
+              1334.7,
+              754.8
+            ],
+            [
+              1261.2,
+              833.0
+            ],
+            [
+              1143.3,
+              823.7
+            ],
+            [
+              1069.8,
+              753.7
+            ],
+            [
+              1069.8,
+              914.7
+            ],
+            [
+              1341.7,
+              919.3
+            ],
+            [
+              1069.8,
+              942.7
+            ],
+            [
+              1397.7,
+              942.7
+            ],
+            [
+              1397.7,
+              542.5
+            ],
+            [
+              1069.8,
+              542.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-006",
+        "confidence": 0.77,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 395.14
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              677.8,
+              739.7
+            ],
+            [
+              627.7,
+              775.8
+            ],
+            [
+              620.7,
+              803.8
+            ],
+            [
+              463.2,
+              803.8
+            ],
+            [
+              366.3,
+              752.5
+            ],
+            [
+              365.2,
+              914.7
+            ],
+            [
+              677.8,
+              914.7
+            ],
+            [
+              677.8,
+              739.7
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-007",
+        "confidence": 0.626,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 325.64
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1069.8,
+              564.7
+            ],
+            [
+              1069.8,
+              751.3
+            ],
+            [
+              1124.7,
+              766.5
+            ],
+            [
+              1130.5,
+              640.5
+            ],
+            [
+              1271.7,
+              639.3
+            ],
+            [
+              1289.2,
+              653.3
+            ],
+            [
+              1289.2,
+              774.7
+            ],
+            [
+              1334.7,
+              752.5
+            ],
+            [
+              1334.7,
+              564.7
+            ],
+            [
+              1069.8,
+              564.7
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-008",
+        "confidence": 0.671,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 323.11
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              791.0,
+              127.2
+            ],
+            [
+              789.8,
+              166.8
+            ],
+            [
+              749.0,
+              190.2
+            ],
+            [
+              771.2,
+              313.8
+            ],
+            [
+              955.5,
+              319.7
+            ],
+            [
+              789.8,
+              289.3
+            ],
+            [
+              955.5,
+              284.7
+            ],
+            [
+              955.5,
+              131.8
+            ],
+            [
+              791.0,
+              127.2
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-009",
+        "confidence": 0.616,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 292.48
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              365.2,
+              564.7
+            ],
+            [
+              372.2,
+              684.8
+            ],
+            [
+              441.0,
+              628.8
+            ],
+            [
+              607.8,
+              634.7
+            ],
+            [
+              648.7,
+              670.8
+            ],
+            [
+              623.0,
+              681.3
+            ],
+            [
+              624.2,
+              778.2
+            ],
+            [
+              677.8,
+              737.3
+            ],
+            [
+              677.8,
+              564.7
+            ],
+            [
+              365.2,
+              564.7
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-010",
+        "confidence": 0.844,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 255.47
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              945.0,
+              654.5
+            ],
+            [
+              794.5,
+              655.7
+            ],
+            [
+              794.5,
+              824.8
+            ],
+            [
+              945.0,
+              824.8
+            ],
+            [
+              945.0,
+              654.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-011",
+        "confidence": 0.453,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 246.38
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1069.8,
+              92.2
+            ],
+            [
+              1069.8,
+              417.7
+            ],
+            [
+              1397.7,
+              417.7
+            ],
+            [
+              1397.7,
+              91.0
+            ],
+            [
+              1341.7,
+              92.2
+            ],
+            [
+              1339.3,
+              401.3
+            ],
+            [
+              1078.0,
+              399.0
+            ],
+            [
+              1069.8,
+              92.2
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-012",
+        "confidence": 0.519,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 234.47
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              724.5,
+              350.0
+            ],
+            [
+              828.3,
+              371.0
+            ],
+            [
+              823.7,
+              320.8
+            ],
+            [
+              768.8,
+              313.8
+            ],
+            [
+              746.7,
+              190.2
+            ],
+            [
+              787.5,
+              166.8
+            ],
+            [
+              791.0,
+              124.8
+            ],
+            [
+              1038.3,
+              131.8
+            ],
+            [
+              1038.3,
+              92.2
+            ],
+            [
+              724.5,
+              92.2
+            ],
+            [
+              724.5,
+              350.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-013",
+        "confidence": 0.839,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 229.35
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1130.5,
+              642.8
+            ],
+            [
+              1129.3,
+              808.5
+            ],
+            [
+              1269.3,
+              808.5
+            ],
+            [
+              1269.3,
+              645.2
+            ],
+            [
+              1130.5,
+              642.8
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-014",
+        "confidence": 0.824,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 138.55
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              364.0,
+              681.3
+            ],
+            [
+              364.0,
+              752.5
+            ],
+            [
+              432.8,
+              789.8
+            ],
+            [
+              514.5,
+              782.8
+            ],
+            [
+              477.2,
+              742.0
+            ],
+            [
+              479.5,
+              707.0
+            ],
+            [
+              462.0,
+              693.0
+            ],
+            [
+              458.5,
+              640.5
+            ],
+            [
+              441.0,
+              631.2
+            ],
+            [
+              372.2,
+              687.2
+            ],
+            [
+              364.0,
+              681.3
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-015",
+        "confidence": 0.821,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 123.16
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              502.8,
+              640.5
+            ],
+            [
+              504.0,
+              651.0
+            ],
+            [
+              525.0,
+              653.3
+            ],
+            [
+              525.0,
+              668.5
+            ],
+            [
+              505.2,
+              673.2
+            ],
+            [
+              516.8,
+              701.2
+            ],
+            [
+              514.5,
+              739.7
+            ],
+            [
+              549.5,
+              785.2
+            ],
+            [
+              605.5,
+              785.2
+            ],
+            [
+              605.5,
+              641.7
+            ],
+            [
+              502.8,
+              640.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "status": "UNCHANGED",
+        "kind": "parcel",
+        "label": "P-016",
+        "confidence": 0.658,
+        "method": "parcel-iou-match",
+        "area_m2_estimated": 52.48
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              460.8,
+              640.5
+            ],
+            [
+              464.3,
+              693.0
+            ],
+            [
+              481.8,
+              707.0
+            ],
+            [
+              479.5,
+              742.0
+            ],
+            [
+              514.5,
+              785.2
+            ],
+            [
+              547.2,
+              785.2
+            ],
+            [
+              512.2,
+              739.7
+            ],
+            [
+              514.5,
+              701.2
+            ],
+            [
+              505.2,
+              691.8
+            ],
+            [
+              500.5,
+              640.5
+            ],
+            [
+              460.8,
+              640.5
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
