@@ -68,6 +68,10 @@ export default function UploadPanel({
   recordTiming,
   demoMode,
   onEnterDemo,
+<<<<<<< HEAD
+=======
+  resetSignal,
+>>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -106,6 +110,24 @@ export default function UploadPanel({
   useEffect(() => () => {
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
   }, []);
+
+  // Global reset from Navbar: clear the selected file + previews + messages.
+  useEffect(() => {
+    if (!resetSignal) return;
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+    setFile(null);
+    setPreview(null);
+    setLocalDims(null);
+    setFileError('');
+    setProgress(null);
+    setBusy(false);
+    setMessage('');
+    setMessageOk(false);
+    setUploaded(null);
+  }, [resetSignal]);
 
   const clearPreview = () => {
     if (urlRef.current) {

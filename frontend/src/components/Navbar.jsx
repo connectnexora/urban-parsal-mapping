@@ -1,4 +1,4 @@
-export default function Navbar({ backendStatus, demoMode, onEnterDemo, onExitDemo, busy }) {
+export default function Navbar({ backendStatus, demoMode, onEnterDemo, onExitDemo, busy, onReset, canReset }) {
   return (
     <header className="navbar">
       <div className="brand">
@@ -26,6 +26,14 @@ export default function Navbar({ backendStatus, demoMode, onEnterDemo, onExitDem
         <div className="pill">
           {backendStatus === 'ok' ? '🟢 Backend connected' : backendStatus === 'down' ? '🔴 Backend offline' : '🟡 Step 1 — Structure setup'}
         </div>
+        <button
+          className="pill pill-btn"
+          onClick={onReset}
+          disabled={busy || !canReset}
+          title="Clear all results, selections and uploaded files (Reset)"
+        >
+          ⟲ Reset
+        </button>
       </div>
     </header>
   );

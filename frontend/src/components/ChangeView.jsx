@@ -46,6 +46,7 @@ export default function ChangeView({
   setIsComparing,
   recordTiming,
   setBackendStatus,
+  resetSignal,
 }) {
   const [fileA, setFileA] = useState(null);
   const [fileB, setFileB] = useState(null);
@@ -62,6 +63,21 @@ export default function ChangeView({
   useEffect(() => () => {
     urls.current.forEach((u) => URL.revokeObjectURL(u));
   }, []);
+
+  // Global reset from Navbar: clear A/B files + previews + messages.
+  useEffect(() => {
+    if (!resetSignal) return;
+    urls.current.forEach((u) => URL.revokeObjectURL(u));
+    urls.current = [];
+    setFileA(null);
+    setFileB(null);
+    setPrevA(null);
+    setPrevB(null);
+    setFileError('');
+    setMessage('');
+    setMessageOk(false);
+    setStatusTab('ALL');
+  }, [resetSignal]);
 
   const pick = (which) => (e) => {
     const f = e.target.files?.[0];

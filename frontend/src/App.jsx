@@ -49,6 +49,9 @@ export default function App() {
   const [demoMode, setDemoMode] = useState('off');
   const [demoStage, setDemoStage] = useState('');
   const [demoError, setDemoError] = useState(null);
+  // Bumped on every global reset so panels with local file state
+  // (UploadPanel, ChangeView) can clear their file inputs + previews.
+  const [resetSignal, setResetSignal] = useState(0);
 
   const selectParcel = (id) => setSelectedParcelId(id);
   const recordTiming = (key, ms, extra) => {
@@ -127,6 +130,28 @@ export default function App() {
     setUploadedInfo(null);
     setReportOpen(false);
   };
+<<<<<<< HEAD
+=======
+
+  // Global reset: clears live AI results, demo state, change results,
+  // selection, timings and errors. Local file inputs in UploadPanel /
+  // ChangeView clear via resetSignal. Disabled while a run is in flight.
+  const resetAll = () => {
+    if (isDetecting || isExtracting || isComparing) return;
+    exitDemo();
+    setExtractKind(null);
+    setIsDetecting(false);
+    setIsExtracting(false);
+    setResetSignal((n) => n + 1);
+  };
+
+  const hasResults = Boolean(
+    detection || detectionError || features || featuresError
+    || parcelResult || parcelError || changeResult || changeError
+    || originalPreview || selectedParcelId || demoMode !== 'off'
+    || Object.keys(timings || {}).length || uploadedInfo || reportOpen,
+  );
+>>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
 
   return (
     <>
@@ -137,6 +162,8 @@ export default function App() {
         onEnterDemo={enterDemo}
         onExitDemo={exitDemo}
         busy={isDetecting || isExtracting}
+        onReset={resetAll}
+        canReset={hasResults}
       />
       <main className="layout">
         <UploadPanel
@@ -159,6 +186,7 @@ export default function App() {
           recordTiming={recordTiming}
           demoMode={demoMode}
           onEnterDemo={enterDemo}
+          resetSignal={resetSignal}
         />
         <MapView
           parcelResult={parcelResult}
@@ -238,6 +266,10 @@ export default function App() {
         setIsComparing={setIsComparing}
         recordTiming={recordTiming}
         setBackendStatus={setBackendStatus}
+<<<<<<< HEAD
+=======
+        resetSignal={resetSignal}
+>>>>>>> 937634a198ba055af7c5ad4c4a994cb67c9a627f
       />
       <footer className="footer">
         <span>YOLO buildings · Approximate parcels (NOT legal cadastre) · Feature pipeline · outputs/</span>
