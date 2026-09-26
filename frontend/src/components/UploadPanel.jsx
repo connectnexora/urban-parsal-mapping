@@ -83,6 +83,9 @@ export default function UploadPanel({
   const [parcelStatus, setParcelStatus] = useState(null);
   const [confidence, setConfidence] = useState(0.25);
   const [gsd, setGsd] = useState(0.1);
+  // One-click full pipeline state: 'upload' | 'buildings' | 'parcels' | 'features' | ''.
+  const [fullRunning, setFullRunning] = useState(false);
+  const [fullStage, setFullStage] = useState('');
   const urlRef = useRef(null);
 
   const refreshStatuses = async () => {
@@ -102,6 +105,18 @@ export default function UploadPanel({
 
   useEffect(() => {
     refreshStatuses();
+    // Silent auto health-check so "Backend: connected" appears without a
+    // manual click. Failure just marks the backend down; the user can retry
+    // with the Test button.
+    (async () => {
+      try {
+        const data = await checkHealth();
+        setBackendStatus('ok');
+        setHealthData(data);
+      } catch {
+        setBackendStatus((s) => (s === 'ok' ? s : 'down'));
+      }
+    })();
   }, []);
 
   useEffect(() => () => {
@@ -121,6 +136,8 @@ export default function UploadPanel({
     setFileError('');
     setProgress(null);
     setBusy(false);
+    setFullRunning(false);
+    setFullStage('');
     setMessage('');
     setMessageOk(false);
     setUploaded(null);
@@ -134,12 +151,71 @@ export default function UploadPanel({
     setPreview(null);
   };
 
-  const working = busy || isDetecting || isExtracting;
+  const working = busy || fullRunning || isDetecting || isExtracting;
+
+  /**
+   * Upload `target` to the backend (POST /api/upload).
+   * Retries once on pure network failure. Returns the server JSON or null.
+   * When `announce` is true the panel message + progress UI reflect it;
+   * the auto-upload after file select uses announce=true so the user SEES
+   * the backend confirmation ("Saved as ... — W×H px").
+   */
+  const doUpload = async (target, { announce = true } = {}) => {
+    if (!target) return null;
+    if (announce) {
+      setBusy(true);
+      setProgress(0);
+      setMessage('Uploading to backend…');
+      setMessageOk(false);
+      setUploaded(null);
+    }
+    const t0 = performance.now();
+    let res = null;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2 && !res; attempt += 1) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        res = await uploadImage(target, announce ? setProgress : undefined);
+      } catch (err) {
+        lastErr = err;
+        // Retry only when the backend never responded (offline/flake).
+        if (err.response) break;
+        if (attempt === 0 && announce) setMessage('Upload hiccup — retrying…');
+      }
+    }
+    if (res) {
+      if (announce) {
+        recordTiming?.('upload', performance.now() - t0, {
+          filename: res.filename || target.name,
+          width: res.width,
+          height: res.height,
+          size_bytes: res.size_bytes ?? target.size,
+        });
+        setBackendStatus('ok');
+        setUploaded(res);
+        setProgress(100);
+        setMessage(`Saved as ${res.filename} — ${res.width}×${res.height} px, ${formatBytes(res.size_bytes)}.`);
+        setMessageOk(true);
+      }
+      return res;
+    }
+    if (announce) {
+      if (lastErr?.response) {
+        setBackendStatus('ok'); // reachable — it rejected the file
+        setMessage(`Upload rejected: ${lastErr.response?.data?.detail || `HTTP ${lastErr.response.status}`}.`);
+      } else {
+        setBackendStatus('down');
+        setMessage(`Upload failed: ${lastErr?.message || 'network error'}. Is the backend running at ${API_BASE}? Will retry automatically on Run.`);
+      }
+      setMessageOk(false);
+    }
+    return null;
+  };
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
-    if (!f) return;
+    if (!f || busy || fullRunning || isDetecting || isExtracting) return;
     clearPreview();
     setUploaded(null);
     setProgress(null);
@@ -185,9 +261,15 @@ export default function UploadPanel({
       setLocalDims(null);
       setOriginalPreview?.(null);
     }
+
+    // SEAMLESS: upload to the backend right away so "select photo" ==
+    // "photo is in the backend". Failures are shown but non-fatal — the
+    // Run buttons retry the upload path via the /detect/* endpoints.
+    void doUpload(f);
   };
 
   const testConnection = async () => {
+    if (fullRunning || isDetecting || isExtracting) return;
     setBusy(true);
     setMessage('Contacting backend…');
     setMessageOk(false);
@@ -208,38 +290,8 @@ export default function UploadPanel({
   };
 
   const onUpload = async () => {
-    if (!file || busy) return;
-    setBusy(true);
-    setProgress(0);
-    setMessage('Uploading…');
-    setMessageOk(false);
-    setUploaded(null);
-    const t0 = performance.now();
-    try {
-      const res = await uploadImage(file, setProgress);
-      recordTiming?.('upload', performance.now() - t0, {
-        filename: res.filename || file.name,
-        width: res.width,
-        height: res.height,
-        size_bytes: res.size_bytes ?? file.size,
-      });
-      setBackendStatus('ok');
-      setUploaded(res);
-      setMessage(`Saved as ${res.filename} — ${res.width}×${res.height} px, ${formatBytes(res.size_bytes)}.`);
-      setMessageOk(true);
-    } catch (err) {
-      // A 4xx means the backend IS reachable (validation failed server-side);
-      // only a missing response means it is offline.
-      if (err.response) {
-        setBackendStatus('ok');
-        setMessage(`Upload rejected: ${err.response?.data?.detail || `HTTP ${err.response.status}`}.`);
-      } else {
-        setBackendStatus('down');
-        setMessage(`Upload failed: ${err.message}. Check the backend is running.`);
-      }
-    } finally {
-      setBusy(false);
-    }
+    if (!file || working) return;
+    await doUpload(file);
   };
 
   const failMsg = (err) => {
@@ -248,7 +300,7 @@ export default function UploadPanel({
   };
 
   const runInference = async (kind) => {
-    if (!file || isDetecting || isExtracting) return;
+    if (!file || isDetecting || isExtracting || fullRunning || busy) return;
     const isFeatures = kind === 'features';
     if (isFeatures) {
       setIsExtracting(true);
@@ -322,7 +374,7 @@ export default function UploadPanel({
   };
 
   const onExtractParcels = async () => {
-    if (!file || isExtracting || isDetecting) return;
+    if (!file || isExtracting || isDetecting || fullRunning || busy) return;
     setIsExtracting(true);
     setExtractKind('parcels');
     setParcelError?.(null);
@@ -345,6 +397,106 @@ export default function UploadPanel({
     } finally {
       setIsExtracting(false);
       setExtractKind(null);
+    }
+  };
+
+  /**
+   * SEAMLESS one-click pipeline: upload (confirm in backend) → buildings →
+   * parcels → features. A 503/empty stage never aborts the later stages;
+   * every stage updates its own panel so counters fill progressively.
+   * Each /detect/* endpoint re-validates + stores the file server-side, so
+   * this works even if the explicit /api/upload step hit a flake.
+   */
+  const runFullAnalysis = async () => {
+    if (!file || !!fileError || working) return;
+    setFullRunning(true);
+    setDetectionError?.(null);
+    setParcelError?.(null);
+    setFeaturesError?.(null);
+    setMessageOk(false);
+    const summary = { buildings: null, parcels: null, features: null };
+    try {
+      setFullStage('upload');
+      setMessage('Stage 1/4: uploading to backend…');
+      const up = await doUpload(file);
+      if (!up) {
+        setMessage('Stage 1/4 failed: could not upload. Check the backend is running, then retry.');
+        return;
+      }
+      // --- Stage 2: buildings (YOLO). 503 = model missing → warn, continue.
+      setFullStage('buildings');
+      setIsDetecting(true);
+      setMessage('Stage 2/4: detecting buildings (YOLO)…');
+      try {
+        const t0 = performance.now();
+        const res = await detectBuildings(file, { confidence });
+        setDetection?.(res);
+        setBackendStatus('ok');
+        recordTiming?.('buildings', performance.now() - t0);
+        summary.buildings = res.building_count ?? res.detections?.length ?? 0;
+      } catch (err) {
+        const status = err.response?.status;
+        const help = failMsg(err) || err.message;
+        const msg = status === 503
+          ? `Buildings unavailable (HTTP 503): ${help}. Parcels/features still run.`
+          : `Buildings failed: ${help}`;
+        setDetection?.(null);
+        setDetectionError?.(msg);
+        summary.buildings = msg;
+      } finally {
+        setIsDetecting(false);
+      }
+      // --- Stage 3: parcels (polygons).
+      setFullStage('parcels');
+      setIsExtracting(true);
+      setExtractKind('parcels');
+      setMessage('Stage 3/4: extracting parcel polygons…');
+      try {
+        const t0 = performance.now();
+        const res = await extractParcels(file, { gsd, epsilon: 0.012, conf: confidence });
+        recordTiming?.('parcels', performance.now() - t0);
+        setParcelResult?.(res);
+        setBackendStatus('ok');
+        summary.parcels = res.parcel_count;
+      } catch (err) {
+        const msg = `Parcel extraction failed: ${failMsg(err) || err.message}`;
+        setParcelResult?.(null);
+        setParcelError?.(msg);
+        summary.parcels = msg;
+      } finally {
+        setIsExtracting(false);
+        setExtractKind(null);
+      }
+      // --- Stage 4: full feature pipeline.
+      setFullStage('features');
+      setIsExtracting(true);
+      setExtractKind('features');
+      setMessage('Stage 4/4: extracting AI features…');
+      try {
+        const t0 = performance.now();
+        const res = await detectFeatures(file, { confidence });
+        setFeatures?.(res);
+        setBackendStatus('ok');
+        recordTiming?.('features', performance.now() - t0);
+        summary.features = res.counts?.total ?? 0;
+      } catch (err) {
+        const msg = `Feature extraction failed: ${failMsg(err) || err.message}`;
+        setFeatures?.(null);
+        setFeaturesError?.(msg);
+        summary.features = msg;
+      } finally {
+        setIsExtracting(false);
+        setExtractKind(null);
+      }
+      const b = typeof summary.buildings === 'number' ? `${summary.buildings} building(s)` : 'buildings skipped';
+      const p = typeof summary.parcels === 'number' ? `${summary.parcels} parcel(s)` : 'parcels failed';
+      const f = typeof summary.features === 'number' ? `${summary.features} feature(s)` : 'features failed';
+      setMessage(`Full analysis done — ${b}, ${p}, ${f}. See Results + map layers.`);
+      setMessageOk(true);
+      await refreshStatuses();
+    } finally {
+      setFullRunning(false);
+      setFullStage('');
     }
   };
 
@@ -438,8 +590,11 @@ export default function UploadPanel({
 
       <div style={{ height: 10 }} />
 
-      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || busy || isDetecting || isExtracting}>
-        {busy ? 'Uploading…' : 'Upload to Backend'}
+      <button className="btn process" onClick={runFullAnalysis} disabled={!file || !!fileError || working} title="Upload (if needed) then run buildings + parcels + features in one go">
+        {fullRunning ? `Running full analysis… (${fullStage || 'starting'})` : 'Upload & Run Full AI Analysis'}
+      </button>
+      <button className="btn" onClick={onUpload} disabled={!file || !!fileError || working}>
+        {busy && !fullRunning ? 'Uploading…' : 'Upload to Backend'}
       </button>
       <button className="btn detect" onClick={() => runInference('buildings')} disabled={!file || !!fileError || working}>
         {isDetecting ? 'Detecting buildings…' : 'Detect Buildings (YOLO)'}
