@@ -28,6 +28,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:
+    from utils.cache import cached, file_fingerprint
+except ImportError:  # allow `uvicorn backend.main:app` from the project root
+    from backend.utils.cache import cached, file_fingerprint
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BASE_DIR.parent
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -329,6 +334,11 @@ def _preprocess(bgr, max_dim: int = 1600):
 # ---------------------------------------------------------------------------
 # Segmentation backends
 # ---------------------------------------------------------------------------
+# Loaded *-seg.pt models, kept per process. Previously every parcel request
+# re-instantiated YOLO from disk (seconds for real weights).
+_seg_models: Dict[str, Any] = {}
+
+
 def _try_yolo_seg_masks(small_bgr, conf: float = 0.25) -> Tuple[List[Any], str | None]:
     """Run a *-seg.pt model via ultralytics if one exists. Returns (masks, name)."""
     weights = _scan_seg_weights()["yolo_seg"]
@@ -344,7 +354,10 @@ def _try_yolo_seg_masks(small_bgr, conf: float = 0.25) -> Tuple[List[Any], str |
         try:
             import cv2
 
-            model = YOLO(str(MODELS_DIR / name))
+            model = _seg_models.get(name)
+            if model is None:
+                model = YOLO(str(MODELS_DIR / name))
+                _seg_models[name] = model
             # Ultralytics expects RGB; our working copy is OpenCV BGR.
             rgb = cv2.cvtColor(small_bgr, cv2.COLOR_BGR2RGB)
             res = model.predict(source=rgb, conf=conf, verbose=False)
@@ -412,6 +425,27 @@ def _classical_segments(pre, min_area_px: float) -> Tuple[List[Any], Any]:
 # ---------------------------------------------------------------------------
 # Boundary extraction -> polygon generation -> simplification -> measurement
 # ---------------------------------------------------------------------------
+def _largest_polygon_part(geom) -> Any:
+    """Largest valid Polygon inside a possibly-multi geometry, else None.
+
+    `buffer(0)` repairs a self-intersecting ring, but it may split it into a
+    MultiPolygon. Only real Polygon parts carry an `.exterior`, so anything
+    else (points, lines, collections with no polygon) is rejected here rather
+    than blowing up later in the pipeline.
+    """
+    try:
+        if geom is None or geom.is_empty:
+            return None
+        if geom.geom_type == "Polygon":
+            return geom
+        parts = [g for g in getattr(geom, "geoms", []) if g.geom_type == "Polygon" and not g.is_empty]
+        if not parts:
+            return None
+        return max(parts, key=lambda g: float(g.area))
+    except Exception:
+        return None
+
+
 def _masks_to_parcels(
     masks: List[Any],
     scale: float,
@@ -459,8 +493,11 @@ def _masks_to_parcels(
         try:
             poly = Polygon(pts)
             if not poly.is_valid:
-                poly = poly.buffer(0)
-            if poly.is_empty or poly.area < 1.0:
+                # buffer(0) on a self-intersecting ring can return a
+                # MultiPolygon / GeometryCollection, not a Polygon — take the
+                # largest valid lobe instead of crashing on `.exterior`.
+                poly = _largest_polygon_part(poly.buffer(0))
+            if poly is None or poly.is_empty or poly.area < 1.0:
                 continue
             area_px = float(poly.area)
             perim_px = float(poly.length)
@@ -528,19 +565,74 @@ def extract_parcels(
     max_dim: int = 1600,
     max_parcels: int = 60,
 ) -> Dict[str, Any]:
-    """Full pipeline. Raises RuntimeError when CV deps/images are unusable."""
+    """Full pipeline (memoised). Raises RuntimeError when CV deps/images are unusable.
+
+    The result is cached under the file's content fingerprint, so the same
+    frame analysed again — a retry, a different GSD slider position, or the
+    change-detection pass on Image A — skips preprocessing, segmentation
+    and polygon extraction entirely.
+    """
+    image_path = Path(image_path)
+    if not image_path.is_file():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+    try:
+        gsd = float(gsd)
+        if not (0.001 <= gsd <= 10.0):
+            raise ValueError("gsd must be within [0.001, 10.0] meters/pixel.")
+    except (TypeError, ValueError):
+        raise ValueError("gsd must be within [0.001, 10.0] meters/pixel.")
+
+    key = (
+        "parcels",
+        round(gsd, 6),
+        round(float(min_area_px), 3),
+        round(float(epsilon_factor), 6),
+        round(float(conf), 4),
+        int(max_dim),
+        int(max_parcels),
+        _seg_fingerprint(),
+    ) + file_fingerprint(image_path)
+
+    result, hit = cached(
+        key,
+        lambda: _extract_parcels_uncached(
+            image_path, gsd, min_area_px, epsilon_factor, conf, max_dim, max_parcels
+        ),
+    )
+    result["cache_hit"] = hit
+    return result
+
+
+def _seg_fingerprint() -> str:
+    """Identify which segmentation weights exist, so the cache can't serve
+    parcel geometry produced by a different model after one is added."""
+    try:
+        weights = _scan_seg_weights()["yolo_seg"]
+    except Exception:
+        return "seg-scan-failed"
+    return "|".join(sorted(weights)) or "classical"
+
+
+def _extract_parcels_uncached(
+    image_path: Path,
+    gsd: float = 0.1,
+    min_area_px: float = 800.0,
+    epsilon_factor: float = 0.012,
+    conf: float = 0.25,
+    max_dim: int = 1600,
+    max_parcels: int = 60,
+) -> Dict[str, Any]:
+    """Preprocess -> segment -> polygons -> metrics for one image.
+
+    Raises RuntimeError when CV deps are unavailable. See extract_parcels().
+    """
     import cv2
 
     status = get_parcel_status()
     if not status.get("ready"):
         raise RuntimeError(status.get("error") or "Parcel service not ready. " + SEG_HELP_MESSAGE)
 
-    image_path = Path(image_path)
-    if not image_path.is_file():
-        raise FileNotFoundError(f"Image not found: {image_path}")
     gsd = float(gsd)
-    if not (0.001 <= gsd <= 10.0):
-        raise ValueError("gsd must be within [0.001, 10.0] meters/pixel.")
     epsilon_factor = float(min(0.08, max(0.002, epsilon_factor)))
 
     # --- Spatial source: embedded georeferencing wins over the assumed GSD.

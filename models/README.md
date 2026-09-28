@@ -1,9 +1,22 @@
 # models/
 
 Place YOLO weight files here. The backend loads them **safely at startup**
-(`backend/services/detection.py`) — if nothing usable is found, the API stays
-up but `POST /detect/buildings` returns **HTTP 503 with instructions**
-instead of fake boxes.
+(`backend/services/detection.py`). If nothing usable is found, the API stays
+up and `POST /detect/buildings` falls back to the **classical rooftop
+detector** (`services/rooftops.py`) — real OpenCV geometry, returned as
+`detection_method: "classical-rooftop"` with a warning — instead of fake
+boxes or an error.
+
+## Check the environment first
+
+```powershell
+python tools/check_env.py
+```
+
+It reports, in order, whether torch/ultralytics can actually load, whether
+the Microsoft Visual C++ runtime is present (torch cannot load its DLLs
+without it on Windows), whether weights exist, and the exact command to fix
+each problem. Run it before debugging a "model not loaded" error.
 
 ## What you need for real building detection
 
@@ -31,9 +44,25 @@ Any `*.pt` / `*.onnx` whose model classes include `building` (or `house`,
 - **INRIA Aerial Image Labeling** (building / not-building segmentation)
 - **CrowdAI Mapping Challenge** (building footprints)
 
-Train with `ultralytics` (`yolo detect train data=building.yaml model=yolov8n.pt
-epochs=…`), copy the resulting `best.pt` here as e.g.
-`models/building_yolov8n.pt`, and restart the backend.
+Train with the helper, which uses aerial-appropriate defaults (a bigger
+`--imgsz`, more epochs, fine-tuning from a COCO checkpoint rather than from
+scratch):
+
+```powershell
+python tools/train_detector.py scaffold      # create data/dataset/{images,labels}/{train,val} + data.yaml
+python tools/train_detector.py check         # validate labels + environment
+python tools/train_detector.py train         # fine-tune -> runs/urban-detector/weights/best.pt
+```
+
+Then copy the result here and restart:
+
+```powershell
+copy runs\urban-detector\weights\best.pt models\building_yolov8n.pt
+```
+
+Fine-tuning a COCO checkpoint on a few hundred labelled tiles beats
+training from scratch on thousands. Aerial images need `--imgsz 1024`
+(small roofs in large frames) — the COCO default of 640 misses them.
 
 Alternatively point the backend at a weight anywhere with:
 

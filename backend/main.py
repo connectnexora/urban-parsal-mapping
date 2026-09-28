@@ -86,6 +86,11 @@ except ImportError:  # allow `uvicorn backend.main:app` from the project root
 
 from PIL import Image, UnidentifiedImageError
 
+try:
+    from utils.cache import stats as cache_stats, invalidate as cache_invalidate
+except ImportError:  # allow `uvicorn backend.main:app` from the project root
+    from backend.utils.cache import stats as cache_stats, invalidate as cache_invalidate
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -325,6 +330,18 @@ def info():
     }
 
 
+@app.get("/api/cache-stats")
+def cache_stats_ep():
+    """Result-cache counters (inference/segmentation memoisation)."""
+    return cache_stats()
+
+
+@app.post("/api/cache/clear")
+def cache_clear_ep():
+    """Drop cached AI results, e.g. after adding new model weights."""
+    return {"cleared": cache_invalidate(), "stats": cache_stats()}
+
+
 @app.get("/detect/model-status")
 @app.get("/api/detect/model-status")
 def model_status():
@@ -377,26 +394,14 @@ async def _detect_buildings_impl(
     saved_name = stored["filename"]
     size_bytes = stored["size_bytes"]
 
-    # Model missing -> 503 with actionable instructions (never fake boxes).
+    # No YOLO weight is NOT a failure here: run_detection falls back to the
+    # classical rooftop detector and reports the missing model in `warning`,
+    # so the UI still gets real (shape-based) geometry instead of a 503.
     status = get_model_status()
-    if not status["loaded"]:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "message": "Building-detection model is unavailable.",
-                "help": status.get("error") or REQUIRED_MODEL_MESSAGE,
-                "model_status": status,
-            },
-        )
 
     try:
         result = await run_in_threadpool(
             run_detection, saved_path, confidence, iou
-        )
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"message": "Detection failed.", "help": str(exc)},
         )
     except FileNotFoundError as exc:
         # Saved moments ago by _store_upload — a missing file here means a
@@ -424,8 +429,10 @@ async def _detect_buildings_impl(
         "model": {
             "name": result["model_name"],
             "type": result["model_type"],
+            "loaded": result.get("model_loaded", status.get("loaded", False)),
             "supports_buildings": result["supports_buildings"],
         },
+        "detection_method": result.get("detection_method", "none"),
         # Spec-shaped primary field: building-only boxes.
         "detections": result["detections"],
         # Transparency: every raw YOLO box with its real class name.
@@ -436,6 +443,9 @@ async def _detect_buildings_impl(
         "annotated_image": f"/outputs/{annotated_name}",
         "annotated_image_file": annotated_name,
         "warning": result["warning"],
+        # True when this frame's inference was reused from a previous request
+        # instead of re-run (e.g. /detect/features after /detect/buildings).
+        "cache_hit": bool(result.get("cache_hit")),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -566,6 +576,7 @@ async def _detect_parcels_impl(
         "geojson_filename": geojson_name,
         "disclaimer": result["disclaimer"],
         "notes": result["notes"],
+        "cache_hit": bool(result.get("cache_hit")),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -638,10 +649,12 @@ async def _detect_features_impl(
     status = get_model_status()
     yolo_dets: list = []
     warnings: list = []
+    det_cache_hit = False
     if status["loaded"]:
         try:
             result = await run_in_threadpool(run_detection, saved_path, confidence, iou)
             yolo_dets = result["all_detections"]
+            det_cache_hit = bool(result.get("cache_hit"))
             if result.get("warning"):
                 warnings.append(result["warning"])
         except Exception as exc:
@@ -697,6 +710,7 @@ async def _detect_features_impl(
         "annotated_image_file": annotated_name,
         "segmentation_stats": pipe.get("segmentation_stats", {}),
         "warnings": warnings,
+        "cache_hit": bool(det_cache_hit),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

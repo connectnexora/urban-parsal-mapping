@@ -1,0 +1,179 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "disclaimer": "AI-estimated / approximate parcel boundaries for visualisation and planning exploration only. NOT legally valid cadastral boundaries. Areas and perimeters are derived from pixel geometry and either embedded GeoTIFF spatial tags (when present) or an assumed ground sample distance (GSD) \u2014 see area_source in the response.",
+    "coordinate_system": "image_pixels",
+    "image_width_px": 960,
+    "image_height_px": 640,
+    "gsd_m_per_px": 0.1,
+    "area_source": "estimated",
+    "georeferencing": {
+      "georeferenced": false,
+      "gsd_x": null,
+      "gsd_y": null,
+      "gsd": null,
+      "crs_hint": null,
+      "detail": "No embedded spatial information found.",
+      "rotated": false,
+      "source": "none"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-001",
+        "area_m2_estimated": 1773.11,
+        "area_ha_estimated": 0.1773,
+        "perimeter_m_estimated": 178.7,
+        "confidence_approx": 0.95,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              3.0,
+              299.0
+            ],
+            [
+              598.0,
+              298.0
+            ],
+            [
+              598.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-002",
+        "area_m2_estimated": 1753.66,
+        "area_ha_estimated": 0.1754,
+        "perimeter_m_estimated": 178.2,
+        "confidence_approx": 0.95,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1.0,
+              344.0
+            ],
+            [
+              1.0,
+              638.0
+            ],
+            [
+              599.0,
+              638.0
+            ],
+            [
+              598.0,
+              345.0
+            ],
+            [
+              1.0,
+              344.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-003",
+        "area_m2_estimated": 929.61,
+        "area_ha_estimated": 0.093,
+        "perimeter_m_estimated": 122.0,
+        "confidence_approx": 0.95,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              645.0,
+              1.0
+            ],
+            [
+              645.0,
+              298.0
+            ],
+            [
+              958.0,
+              298.0
+            ],
+            [
+              958.0,
+              1.0
+            ],
+            [
+              645.0,
+              1.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-004",
+        "area_m2_estimated": 918.56,
+        "area_ha_estimated": 0.0919,
+        "perimeter_m_estimated": 121.3,
+        "confidence_approx": 0.95,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              644.0,
+              345.0
+            ],
+            [
+              645.0,
+              638.0
+            ],
+            [
+              958.0,
+              638.0
+            ],
+            [
+              958.0,
+              345.0
+            ],
+            [
+              644.0,
+              345.0
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

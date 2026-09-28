@@ -20,6 +20,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:
+    from utils.cache import cached, file_fingerprint
+except ImportError:  # allow `uvicorn backend.main:app` from the project root
+    from backend.utils.cache import cached, file_fingerprint
+
 # ---------------------------------------------------------------------------
 # Paths / constants
 # ---------------------------------------------------------------------------
@@ -196,10 +201,19 @@ def load_model() -> Dict[str, Any]:
         from ultralytics import YOLO  # local import: keeps module importable w/o deps
     except Exception as exc:  # ultralytics / torch not installed
         _model = None
+        detail = " ".join(str(exc).split())[:220] or exc.__class__.__name__
+        hint = ""
+        if "126" in detail or "dll" in detail.lower():
+            # Windows without the MSVC runtime: torch's DLLs cannot load.
+            hint = (
+                " This is usually the missing Microsoft Visual C++ Redistributable "
+                "on Windows (torch cannot load its DLLs) — install "
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe, then restart."
+            )
         _load_error = (
-            f"ultralytics is not installed or failed to import ({exc}). "
-            "Install backend/requirements.txt (pip install -r requirements.txt). "
-            + REQUIRED_MODEL_MESSAGE
+            f"ultralytics/torch unavailable ({detail}). "
+            "Install backend/requirements.txt (pip install -r requirements.txt)."
+            + hint + " " + REQUIRED_MODEL_MESSAGE
         )
         return get_model_status()
 
@@ -300,16 +314,27 @@ def run_detection(
     conf: float = 0.25,
     iou: float = 0.45,
 ) -> Dict[str, Any]:
-    """Run YOLO inference on an image file.
+    """Run YOLO inference on an image file (memoised per file + parameters).
+
+    `/detect/buildings` and `/detect/features` need the same inference for
+    the same frame, so the result is cached under the file's content
+    fingerprint. The one-click full-analysis pipeline therefore pays for
+    YOLO + the classical rooftop fallback once instead of twice.
 
     Returns a dict with:
       - detections: building-only boxes [{class, confidence, bbox, class_id}]
       - all_detections: every raw detection (real class names, never faked)
       - building_count, average_confidence
       - image_width / image_height, model info, warning (when generic)
-    Raises RuntimeError when no model is loaded (caller maps it to HTTP 503).
+      - model_loaded: False when no YOLO weight is available
+
+    With no YOLO model the endpoint does NOT fail: it falls back to the
+    classical rooftop detector (real CV on this image, labelled
+    `method: "classical-rooftop"`) and explains the missing model in
+    `warning`, matching what /detect/features already does. Geometry is
+    always computed from the image — nothing is ever fabricated.
     """
-    model = _require_model()
+    model = _model  # may be None: the classical fallback still works
     image_path = Path(image_path)
     if not image_path.is_file():
         raise FileNotFoundError(f"Image not found: {image_path}")
@@ -317,33 +342,63 @@ def run_detection(
     conf = float(max(0.01, min(0.99, conf)))
     iou = float(max(0.01, min(0.99, iou)))
 
-    results = model.predict(source=str(image_path), conf=conf, iou=iou, verbose=False)
-    if not results:
-        raise RuntimeError("YOLO returned no results for the image.")
+    key = (
+        "detection",
+        _model_path or "",
+        _model_type,
+        round(conf, 4),
+        round(iou, 4),
+    ) + file_fingerprint(image_path)
 
-    r0 = results[0]
-    names: Dict[int, str] = dict(getattr(model, "names", {}) or getattr(r0, "names", {}) or {})
+    result, hit = cached(
+        key, lambda: _run_detection_uncached(model, image_path, conf, iou)
+    )
+    result["cache_hit"] = hit
+    return result
 
+
+def _run_detection_uncached(
+    model: Any,
+    image_path: Path,
+    conf: float,
+    iou: float,
+) -> Dict[str, Any]:
+    """Inference + box parsing for one image. See run_detection().
+
+    `model` may be None (no usable YOLO weight) — in that case the YOLO
+    branch is skipped entirely and only the classical rooftop detector runs.
+    """
     all_dets: List[Dict[str, Any]] = []
-    try:
-        boxes = r0.boxes
-        if boxes is not None and len(boxes) > 0:
-            for box in boxes:
-                xyxy = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
-                cls_id = int(box.cls[0].tolist())
-                score = float(box.conf[0].tolist())
-                label = str(names.get(cls_id, str(cls_id)))
-                x1, y1, x2, y2 = (int(round(v)) for v in xyxy)
-                all_dets.append(
-                    {
-                        "class": label,
-                        "class_id": cls_id,
-                        "confidence": round(score, 4),
-                        "bbox": [x1, y1, x2, y2],
-                    }
-                )
-    except Exception as exc:
-        raise RuntimeError(f"Failed to parse YOLO results: {exc}")
+    names: Dict[int, str] = {}
+    r0 = None
+
+    if model is not None:
+        results = model.predict(source=str(image_path), conf=conf, iou=iou, verbose=False)
+        if not results:
+            raise RuntimeError("YOLO returned no results for the image.")
+
+        r0 = results[0]
+        names = dict(getattr(model, "names", {}) or getattr(r0, "names", {}) or {})
+
+        try:
+            boxes = r0.boxes
+            if boxes is not None and len(boxes) > 0:
+                for box in boxes:
+                    xyxy = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
+                    cls_id = int(box.cls[0].tolist())
+                    score = float(box.conf[0].tolist())
+                    label = str(names.get(cls_id, str(cls_id)))
+                    x1, y1, x2, y2 = (int(round(v)) for v in xyxy)
+                    all_dets.append(
+                        {
+                            "class": label,
+                            "class_id": cls_id,
+                            "confidence": round(score, 4),
+                            "bbox": [x1, y1, x2, y2],
+                        }
+                    )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to parse YOLO results: {exc}")
 
     building_dets = [d for d in all_dets if _is_building_label(d["class"])]
     classical_dets: List[Dict[str, Any]] = []
@@ -386,10 +441,40 @@ def run_detection(
             ]
     count = len(building_dets)
     avg = round(sum(d["confidence"] for d in building_dets) / count, 4) if count else 0.0
-    width, height = _read_image_size(image_path)
+    # Reuse the shape ultralytics already decoded instead of re-reading the
+    # file with cv2.imread just to learn its dimensions.
+    orig_shape = getattr(r0, "orig_shape", None) if r0 is not None else None
+    if orig_shape and len(orig_shape) >= 2:
+        height, width = int(orig_shape[0]), int(orig_shape[1])
+    else:
+        width, height = _read_image_size(image_path)
 
+    model_loaded = _model is not None
     warning: str | None = None
-    if not _supports_buildings:
+    if not model_loaded:
+        # No usable YOLO weight at all: the classical detector is the ONLY
+        # source of geometry, and it is real CV on this image.
+        if classical_dets:
+            warning = (
+                "No YOLO model is loaded in this backend (%s), so buildings were "
+                "detected with the classical rooftop detector (colour + edge "
+                "rectangularity, inpainted parcel overlays, vegetation rejection) "
+                "computed from this image. %d building(s) reported with heuristic "
+                "confidence (shape-based, not a learned score). %s"
+                % (
+                    _load_error or "no weights available",
+                    len(classical_dets),
+                    REQUIRED_MODEL_MESSAGE,
+                )
+            )
+        else:
+            warning = (
+                "No YOLO model is loaded in this backend (%s) and the classical "
+                "rooftop detector found no rectangular rooftops in this image, so "
+                "0 buildings are reported. %s"
+                % (_load_error or "no weights available", REQUIRED_MODEL_MESSAGE)
+            )
+    elif not _supports_buildings:
         if classical_dets:
             warning = (
                 "The loaded model (%s) has no 'building' class (generic COCO fallback), "
@@ -427,7 +512,15 @@ def run_detection(
         "image_height": height,
         "model_name": Path(_model_path).name if _model_path else None,
         "model_type": _model_type,
+        "model_loaded": model_loaded,
         "supports_buildings": _supports_buildings,
+        # Which detector produced `detections` — "classical-rooftop" when the
+        # boxes come from the CV fallback rather than a YOLO weight.
+        "detection_method": (
+            "yolo" if (_model is not None and _supports_buildings)
+            else "classical-rooftop" if classical_dets
+            else "none"
+        ),
         "warning": warning,
     }
 

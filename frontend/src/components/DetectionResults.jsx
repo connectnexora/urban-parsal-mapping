@@ -50,6 +50,13 @@ export default function DetectionResults({
   const fcounts = features?.counts || {};
   const freasons = features?.reasons || {};
   const fmap = features?.features || {};
+  // Be explicit about provenance: YOLO weight vs classical shape detection.
+  const method = detection?.detection_method
+    || (detection?.model?.loaded ? 'yolo' : 'classical-rooftop');
+  const classical = method !== 'yolo';
+  const modelLabel = classical
+    ? 'No YOLO weight loaded — classical rooftop detector (OpenCV, shape-based)'
+    : `${detection?.model?.name ?? 'unknown model'} (${detection?.model?.type ?? 'unknown type'})`;
 
   return (
     <section className="card detect-section">
@@ -57,16 +64,20 @@ export default function DetectionResults({
         <>
           <div className="detect-head">
             <div>
-              <h2>4 · AI Building Detection (YOLO)</h2>
+              <h2>4 · AI Building Detection{classical ? ' (classical CV)' : ' (YOLO)'}</h2>
               <p className="sub">
-                Model <b>{detection.model?.name ?? 'unknown model'}</b> ({detection.model?.type ?? 'unknown type'}) ·{' '}
+                Detector <b>{modelLabel}</b> ·{' '}
                 {count} building(s) · avg confidence {Number(avg ?? 0).toFixed(2)} ·{' '}
                 {detection.image_width ?? '—'}×{detection.image_height ?? '—'}px
+                {classical && ' · heuristic shape confidence, not a learned score'}
               </p>
             </div>
             <div className="detect-badges">
               <span className="badge">{count} buildings</span>
               <span className="badge">{Number(avg).toFixed(2)} avg conf</span>
+              <span className={`badge ${classical ? 'badge-est' : 'badge-geo'}`}>
+                {classical ? '📐 Classical CV' : '🤖 YOLO'}
+              </span>
             </div>
           </div>
 
@@ -110,9 +121,11 @@ export default function DetectionResults({
             </div>
           ) : (
             <p className="mono">
-              No building-class boxes above threshold. Raw YOLO output
-              ({detection.total_detections ?? 0} total) is preserved in the response
-              as <b>all_detections</b> with real class names.
+              {classical
+                ? 'No rooftop passed the shape filters on this image (rectangularity / solidity / vegetation rejection). Try a lower confidence or a different frame.'
+                : 'No building-class boxes above threshold. Raw YOLO output '
+                  + `(${detection.total_detections ?? 0} total) is preserved in the response `
+                  + 'as <b>all_detections</b> with real class names.'}
             </p>
           )}
         </>
