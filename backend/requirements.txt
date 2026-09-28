@@ -2,11 +2,16 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.12
 aiofiles==23.2.1
-numpy==1.26.4
-opencv-python==4.10.0.84
-# NOTE: ultralytics pulls torch transitively (~2 GB, unpinned upstream).
+numpy>=1.26
+opencv-python>=4.10
+# NOTE: ultralytics pulls torch transitively (~2 GB with CUDA on Windows).
+# For a CPU-only install (much smaller, no NVIDIA drivers needed):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
 # On GPU-less servers prefer opencv-python-headless over opencv-python
 # to avoid system libGL dependencies.
-ultralytics==8.2.0
-shapely==2.0.5
-pillow==10.4.0
+# Windows also needs the MSVC runtime for torch to load its DLLs:
+# https://aka.ms/vs/17/release/vc_redist.x64.exe
+ultralytics>=8.2
+shapely>=2.0
+pillow>=10.4

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import CollapsibleText from './CollapsibleText.jsx';
 import {
   API_BASE,
   checkHealth,
@@ -636,10 +637,12 @@ export default function UploadPanel({
         </div>
       )}
 
-      {message && <p className={messageOk ? 'mono ok-text' : 'mono'} style={{ marginTop: 12 }}>{message}</p>}
-      <p className="mono">API: {API_BASE}</p>
-      <p className="mono">{modelBadge}</p>
-      <p className="mono">{parcelBadge}</p>
+      {message && <CollapsibleText text={message} className={messageOk ? 'ok-text' : ''} />}
+      <div className="diagnostics">
+        <CollapsibleText text={`API: ${API_BASE}`} />
+        <CollapsibleText text={modelBadge} />
+        <CollapsibleText text={parcelBadge} />
+      </div>
     </section>
   );
 }

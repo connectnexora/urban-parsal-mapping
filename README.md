@@ -74,13 +74,19 @@ urban-parsal-mapping/
 │   ├── main.py               # routes, validation, /outputs static mount
 │   ├── requirements.txt
 │   ├── services/
-│   │   ├── detection.py      # YOLO building detection (safe load)
+│   │   ├── detection.py      # YOLO building detection (safe load, memoised)
 │   │   ├── parcels.py        # segmentation → polygons → metric estimates
 │   │   ├── features.py       # YOLO + colour-segmentation taxonomy
+│   │   ├── rooftops.py       # classical rooftop fallback (no weights needed)
+│   │   ├── roads.py          # classical road-corridor detector
 │   │   └── changes.py        # A/B change detection pipeline
-│   └── utils/geo.py          # pixel→metric helpers, GeoJSON builders
+│   └── utils/
+│       ├── geo.py           # pixel→metric helpers, GeoJSON builders
+│       └── cache.py         # content-fingerprint memo cache for AI results
 ├── tools/
-│   └── make-demo-scene.mjs   # zero-dependency demo dataset generator (node)
+│   ├── make-demo-scene.mjs  # zero-dependency demo dataset generator (node)
+│   ├── check_env.py         # preflight: torch/MSVC/weights/detection readiness
+│   └── train_detector.py    # dataset scaffold + check + aerial fine-tuning
 ├── models/                   # YOLO weights (git-ignored, see below)
 ├── data/
 │   ├── uploads/              # received images (git-ignored)
@@ -136,8 +142,15 @@ uvicorn main:app --reload --port 8000
 - Health: http://localhost:8000/api/health → `{"status":"ok",...}`
 - Interactive docs: http://localhost:8000/docs
 - Annotated images / GeoJSON: http://localhost:8000/outputs/...
-- The server starts even with no model weights; AI endpoints then return
-  HTTP 503 with setup instructions instead of fake results.
+- The server starts even with no model weights. Detection then falls back to
+  the **classical rooftop detector** (`services/rooftops.py`): real OpenCV
+  work on the image (colour clustering, edge-enclosed regions, shape +
+  vegetation filters) reported as `detection_method: "classical-rooftop"`
+  with a warning explaining that no YOLO weight is loaded. Its confidence is
+  a shape heuristic, not a learned score, and the UI labels it
+  **Classical CV** so it is never mistaken for YOLO output.
+- `/detect/features` behaves the same way and additionally fills
+  vegetation/water from colour segmentation.
 
 ## How to run the frontend
 
@@ -164,9 +177,17 @@ All model loading is safe: missing/incompatible weights degrade honestly.
 | `*unet*`, `*sam*` | Detected and reported; need torch + segmentation libs, otherwise the classical fallback runs |
 
 Without a custom weight, the auto-downloaded generic COCO `yolov8n.pt` is
-used transparently: it has **no `building` class**, so building counts stay
-0 with an explanatory warning. `YOLO_MODEL_PATH` env var can point at a
-weight elsewhere. See `models/README.md`.
+used transparently: it has **no `building` class**, so building counts come
+from the classical rooftop detector instead (clearly labelled in the UI).
+`YOLO_MODEL_PATH` env var can point at a weight elsewhere. See
+`models/README.md`.
+
+> **Windows note:** `torch` needs the Microsoft Visual C++ Redistributable.
+> Without it, `import ultralytics` fails with `WinError 126` ("Error loading
+> c10.dll") and the backend serves classical-CV results instead of YOLO.
+> Install <https://aka.ms/vs/17/release/vc_redist.x64.exe> (run as admin),
+> then restart the backend. A CPU-only torch keeps the download small:
+> `pip install torch --index-url https://download.pytorch.org/whl/cpu`.
 
 ## Dataset requirements
 
@@ -190,11 +211,44 @@ weight elsewhere. See `models/README.md`.
 | `GET /detect/model-status`, `GET /api/detect/model-status` | YOLO load state |
 | `GET /detect/parcel-status`, `GET /api/detect/parcel-status` | Segmentation readiness |
 | `POST /upload`, `POST /api/upload` | Validate + store image → filename, dimensions, size (no AI) |
-| `POST /detect/buildings`, `POST /api/detect/buildings` | `file` + `confidence`, `iou` → `detections:[{class, confidence, bbox}]`, counts, annotated image |
+| `POST /detect/buildings`, `POST /api/detect/buildings` | `file` + `confidence`, `iou` → `detections:[{class, confidence, bbox}]`, counts, `detection_method` (`yolo` / `classical-rooftop`), annotated image |
 | `POST /detect/parcels`, `POST /api/detect/parcels` | `file` + `gsd`, `epsilon`, `conf`, `max_parcels` → `parcels:[{parcel_id, area_m2, area_ha, perimeter_m, confidence, polygon}]`, summary, GeoJSON, annotated image |
 | `POST /detect/features`, `POST /api/detect/features` | `file` + `confidence`, `iou` → `features:{buildings, roads, vegetation, water, other}`, `counts`, `reasons`, annotated image |
 | `POST /detect/changes`, `POST /api/detect/changes` | `file_a` (older) + `file_b` (newer) + `confidence`, `iou`, `align`, `gsd` → `changes:[{status, kind, ...}]` with UNCHANGED/NEW/REMOVED/CHANGED, summary, annotated change map, GeoJSON |
 | `GET /outputs/<file>` | Annotated images / GeoJSON artefacts |
+| `GET /api/cache-stats` | Result-cache hit/miss counters |
+| `POST /api/cache/clear` | Drop cached AI results (e.g. after adding model weights) |
+
+## Result caching (efficiency)
+
+Several endpoints need the same computation for the same frame:
+`/detect/buildings` and `/detect/features` both run YOLO inference plus the
+classical rooftop fallback, and `/detect/changes` re-analyses Image A.
+Results are therefore memoised in `backend/utils/cache.py` (LRU, 8 entries,
+process-local) under a **content fingerprint** — `blake2b` of the file bytes,
+not its path, because every endpoint stores its own timestamped copy of an
+upload.
+
+| Cached step | Key includes |
+| ----------- | ----------- |
+| YOLO inference + rooftop fallback (`run_detection`) | file hash, `conf`, `iou`, loaded model |
+| Classical rooftop pass (`detect_rooftops`) | file hash, `conf_threshold`, `max_dim` |
+| Vegetation/water land cover (`segment_landcover`) | file hash |
+| Full parcel pipeline (`extract_parcels`) | file hash, `gsd`, `epsilon`, `conf`, `max_dim`, `max_parcels`, present seg weights |
+
+Properties worth knowing:
+
+* Changing **any** parameter (e.g. the GSD slider) is a cache miss, so areas
+  are never served for the wrong scale.
+* `cache_hit` in a response tells you inference was reused; identical output
+  is guaranteed because the pipeline is deterministic.
+* Segmentation weights already present in `models/` are loaded once per
+  process instead of per request, and land-cover cell voting is vectorised
+  with numpy (~3x faster, identical regions).
+* The cache is in-memory only — a backend restart clears it. Restarting the
+  backend (or `POST /api/cache/clear`) is required after adding new weights
+  so no stale result is served; the model identity and weight set are part
+  of the key, but an explicit clear is the safe habit.
 
 ## Complete workflow
 
@@ -237,6 +291,16 @@ always match.
 
 ## Limitations
 
+- **The classical detectors are heuristics, not a trained model.** They were
+  reworked for dense urban frames (touching roofs are split with a
+  watershed, size filters scale with resolution, parks/shadows/saturated
+  vehicles are rejected, vegetation uses excess-green because satellite
+  foliage is low-saturation). On a 600×338 downtown frame that took building
+  candidates from 11 to 80, but a handful of false positives remain and small
+  roofs can still be missed. Road corridors are the weakest class: asphalt,
+  concrete roofs and plazas overlap in colour, so `classical-road` segments
+  are approximate by construction. Every response reports which detector
+  produced each class in `sources`, and each item carries its `method`.
 - Parcel boundaries are **approximations**, not survey-grade: segmentation
   quality depends on image resolution, lighting, viewpoint and GSD accuracy.
 - Metric areas from plain JPG/PNG assume the UI GSD value; only projected

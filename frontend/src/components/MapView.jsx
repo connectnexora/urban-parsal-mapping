@@ -100,7 +100,11 @@ function LayerShapes({ items, color, dims, bounds }) {
         }
         const ring = poly.map(([x, y]) => pxToLatLng(x, y, dims, bounds));
         return (
-          <Polygon key={i} positions={ring} pathOptions={{ color, weight: 2, fillOpacity: 0.25 }}>
+          <Polygon
+            key={i}
+            positions={ring}
+            pathOptions={{ color, weight: 2, fillOpacity: 0.1, dashArray: item.polygon ? null : '4 3' }}
+          >
             <FeaturePopup item={item} />
           </Polygon>
         );
@@ -140,18 +144,38 @@ export default function MapView({
     return () => clearTimeout(t);
   }, []);
 
-  const parcels = parcelResult?.parcels || [];
-  const changes = changeResult?.changes || [];
+  const allParcels = parcelResult?.parcels || [];
+  const allChanges = changeResult?.changes || [];
   const changeColors = { ...CHANGE_COLORS_DEFAULT, ...(changeResult?.change_colors || {}) };
-  const dims = useMemo(() => {
-    // Change overlays live in Image-A pixel space; prefer those dims when a
-    // change result exists so change geometry aligns with the frame.
-    const w = changeResult?.image_a?.width || parcelResult?.image_width
-      || featureResult?.image_width || detection?.image_width;
-    const h = changeResult?.image_a?.height || parcelResult?.image_height
-      || featureResult?.image_height || detection?.image_height;
-    return w && h ? { w, h } : null;
-  }, [changeResult, parcelResult, featureResult, detection]);
+
+  // Every result carries the pixel size of the image it was computed from.
+  // They can differ (e.g. change detection on its own Image A while an
+  // earlier parcel result is still loaded), so the shared schematic frame is
+  // chosen ONCE and any layer whose source size doesn't match is not drawn —
+  // previously it was stretched into the wrong frame, which put overlays in
+  // the wrong place and made them overlap.
+  const dimsOf = (r) => (r?.image_width && r?.image_height
+    ? { w: r.image_width, h: r.image_height } : null);
+  const changeDims = (r) => (r?.image_a?.width && r?.image_a?.height
+    ? { w: r.image_a.width, h: r.image_a.height } : null);
+
+  const parcelSource = { label: 'Parcels', dims: dimsOf(parcelResult) };
+  const featureSource = { label: 'Features', dims: dimsOf(featureResult) };
+  const buildingSource = { label: 'Buildings', dims: dimsOf(detection) };
+  const changeSource = { label: 'Change detection', dims: changeDims(changeResult) };
+
+  const dims = changeSource.dims || parcelSource.dims || featureSource.dims || buildingSource.dims || null;
+  const fits = (src) => !src.dims || !dims || (src.dims.w === dims.w && src.dims.h === dims.h);
+  const mismatched = [parcelSource, featureSource, buildingSource, changeSource]
+    .filter((s) => s.dims && dims && (s.dims.w !== dims.w || s.dims.h !== dims.h));
+
+  const showParcels = allParcels.length > 0 && fits(parcelSource);
+  const showFeatures = fits(featureSource);
+  const showBuildingsSrc = featureSource.dims && featureResult?.features?.buildings?.length
+    ? featureSource : buildingSource;
+  const showChanges = allChanges.length > 0 && fits(changeSource);
+  const parcels = showParcels ? allParcels : [];
+  const changes = showChanges ? allChanges : [];
 
   const frame = useMemo(() => (dims ? imageFrame(dims) : null), [dims]);
 
@@ -161,6 +185,7 @@ export default function MapView({
     if (featureResult?.features?.buildings?.length) return featureResult.features.buildings;
     return detection?.detections || [];
   }, [featureResult, detection]);
+  const visibleBuildings = fits(showBuildingsSrc) ? buildingItems : [];
 
   const coverageById = useMemo(
     () => buildingCoverage(parcelResult?.parcels || [], buildingItems),
@@ -172,18 +197,19 @@ export default function MapView({
     [parcelResult, parcels.length, coverageById],
   );
   const buildingsGeoJSON = useMemo(
-    () => (buildingItems.length ? detectionsToGeoJSON(buildingItems, 'buildings') : null),
-    [buildingItems],
+    () => (visibleBuildings.length ? detectionsToGeoJSON(visibleBuildings, 'buildings') : null),
+    [visibleBuildings],
   );
   const featureGeoJSON = useMemo(() => {
     const out = {};
+    if (!showFeatures) return out;
     for (const { key } of FEATURE_LAYER_DEFS) {
       if (key === 'buildings') continue; // covered by the buildings layer
       const items = featureResult?.features?.[key] || [];
       if (items.length) out[key] = featureItemsToGeoJSON(items, key);
     }
     return out;
-  }, [featureResult]);
+  }, [featureResult, showFeatures]);
 
   const toLatLng = useMemo(() => {
     if (!dims || !frame) return null;
@@ -206,7 +232,7 @@ export default function MapView({
     for (const p of parcels) {
       for (const [x, y] of p.polygon || []) pts.push(pxToLatLng(x, y, dims, frame));
     }
-    for (const b of buildingItems) {
+    for (const b of visibleBuildings) {
       if (!b?.bbox) continue;
       const [x1, y1, x2, y2] = b.bbox;
       pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
@@ -216,18 +242,20 @@ export default function MapView({
       const [x1, y1, x2, y2] = c.bbox;
       pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
     }
-    for (const { key } of FEATURE_LAYER_DEFS) {
-      for (const it of featureResult?.features?.[key] || []) {
-        if (it?.bbox) {
-          const [x1, y1, x2, y2] = it.bbox;
-          pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+    if (showFeatures) {
+      for (const { key } of FEATURE_LAYER_DEFS) {
+        for (const it of featureResult?.features?.[key] || []) {
+          if (it?.bbox) {
+            const [x1, y1, x2, y2] = it.bbox;
+            pts.push(pxToLatLng(x1, y1, dims, frame), pxToLatLng(x2, y2, dims, frame));
+          }
         }
       }
     }
     if (!pts.length) return null;
     // pts are [lat, lng] pairs already.
     return L.latLngBounds(pts.map(([lat, lng]) => [lat, lng]));
-  }, [dims, frame, parcels, buildingItems, changes, featureResult]);
+  }, [dims, frame, parcels, visibleBuildings, changes, featureResult, showFeatures]);
 
   const onEachParcel = (feature, layer) => {
     const p = feature.properties || {};
@@ -296,19 +324,21 @@ export default function MapView({
   const colors = { ...FEATURE_COLORS, ...(featureResult?.feature_colors || {}) };
 
   const hasParcels = parcels.length > 0;
-  const hasBuildings = buildingItems.length > 0;
+  const hasBuildings = visibleBuildings.length > 0;
   const hasFeatures = Object.keys(featureGeoJSON).length > 0;
   const hasChanges = changes.length > 0;
   const changeCounts = changeResult?.counts || {};
   // Feature layers need geometry + frame, NOT the browser preview: TIFFs
   // have no preview (overlayUrl null) but their vectors still render.
   const hasVectors = !!(frame && dims && (hasParcels || hasBuildings || hasFeatures || hasChanges));
-  const hasOverlay = !!(frame && overlayUrl && (featureResult || parcelResult || detection));
+  // The preview is only meaningful when a result for THIS image is drawn;
+  // otherwise the photo and the vectors would not share a frame.
+  const hasOverlay = !!(frame && overlayUrl && (hasParcels || hasBuildings || hasFeatures || hasChanges));
   const hasAnything = hasVectors || hasOverlay;
 
   const shownBits = [
     hasParcels ? `${parcels.length} parcel(s)` : null,
-    hasBuildings ? `${buildingItems.length} building(s)` : null,
+    hasBuildings ? `${visibleBuildings.length} building(s)` : null,
     hasFeatures ? `${Object.values(featureGeoJSON).reduce((n, g) => n + g.features.length, 0)} other feature(s)` : null,
     hasChanges ? `${changes.length} change(s)` : null,
   ].filter(Boolean);
@@ -369,9 +399,9 @@ export default function MapView({
           )}
 
           {buildingsGeoJSON && toLatLng && (
-            <LayersControl.Overlay checked name={`Buildings (${buildingItems.length})`}>
+            <LayersControl.Overlay checked name={`Buildings (${visibleBuildings.length})`}>
               <GeoJSON
-                key={`bldg-${(detection || featureResult)?.filename || 'nofile'}-${(detection || featureResult)?.timestamp || ''}-${buildingItems.length}`}
+                key={`bldg-${(detection || featureResult)?.filename || 'nofile'}-${(detection || featureResult)?.timestamp || ''}-${visibleBuildings.length}`}
                 data={buildingsGeoJSON}
                 coordsToLatLng={toLatLng}
                 style={{ color: colors.buildings, weight: 2, fillOpacity: 0.15 }}
@@ -380,7 +410,7 @@ export default function MapView({
             </LayersControl.Overlay>
           )}
 
-          {hasVectors && ['roads', 'vegetation', 'water', 'other'].map((key) => {
+          {hasVectors && showFeatures && ['roads', 'vegetation', 'water', 'other'].map((key) => {
             const items = feats[key] || [];
             const n = counts[key] ?? items.length;
             return (
@@ -433,13 +463,15 @@ export default function MapView({
         <div className="layer-row" title="YOLO building detections">
           <span className="legend-dot" style={{ background: colors.buildings }} />
           <span className="layer-name">Buildings</span>
-          <span className="mono">{buildingItems.length}</span>
+          <span className="mono">{visibleBuildings.length}</span>
         </div>
         {['roads', 'vegetation', 'water', 'other'].map((key) => {
-          const n = counts[key] ?? (feats[key] || []).length;
-          const note = !featureResult
-            ? 'run Process Image (AI Features)'
-            : (n === 0 && reasons[key] ? reasons[key] : null);
+          const n = showFeatures ? (counts[key] ?? (feats[key] || []).length) : 0;
+          const note = !showFeatures
+            ? 'hidden — computed on a different image size'
+            : !featureResult
+              ? 'run Process Image (AI Features)'
+              : (n === 0 && reasons[key] ? reasons[key] : null);
           return (
             <div key={key} className="layer-row" title={note || `${n} ${key} shown`}>
               <span className="legend-dot" style={{ background: colors[key] }} />
@@ -459,6 +491,14 @@ export default function MapView({
             </div>
           );
         })}
+        {mismatched.length > 0 && (
+          <p className="warn-box">
+            Hidden: {mismatched.map((s) => `${s.label} (${s.dims.w}×${s.dims.h})`).join(', ')}.
+            {' '}Overlays are drawn in one shared frame, so results from a different
+            image size would be misaligned and overlap — re-run the pipeline on the
+            current image, or press Reset, to overlay them together.
+          </p>
+        )}
         <p className="map-note">
           {hasAnything
             ? '⚠️ Schematic overlays: image-pixel geometry fitted around the centre for inspection — NOT georeferenced survey data and NOT legal cadastre. True geometry is in the annotated images + GeoJSON below. Toggle Streets/Satellite (top-right) and layers as needed.'
