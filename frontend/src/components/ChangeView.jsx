@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE, detectChanges, resolveAssetUrl } from '../services/api.js';
 
-const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
-const PREVIEWABLE_EXT = ['.jpg', '.jpeg', '.png'];
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/tiff'];
+const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff'];
+const PREVIEWABLE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/tiff'];
 const MAX_BYTES = 100 * 1024 * 1024;
 
 const CHANGE_ORDER = ['NEW', 'REMOVED', 'CHANGED', 'UNCHANGED'];
@@ -22,10 +22,10 @@ const extOf = (name) => {
 function validateFile(f) {
   const ext = extOf(f.name);
   if (!ext || !ALLOWED_EXT.includes(ext)) {
-    return `Unsupported file type '${ext || '(none)'}'. Allowed: JPG, JPEG, PNG, TIF/TIFF.`;
+    return `Unsupported file type '${ext || '(none)'}'. Allowed: JPG, JPEG, PNG, WEBP, TIF/TIFF.`;
   }
   if (f.type && !ALLOWED_MIME.includes(f.type.toLowerCase())) {
-    return `Rejected MIME type '${f.type}'. Please choose a JPG, PNG or TIFF image.`;
+    return `Rejected MIME type '${f.type}'. Please choose a JPG, PNG, WEBP or TIFF image.`;
   }
   if (f.size === 0) return 'File is empty (0 bytes).';
   if (f.size > MAX_BYTES) return 'File exceeds the 100 MB limit.';
@@ -58,6 +58,8 @@ export default function ChangeView({
   const [confidence, setConfidence] = useState(0.25);
   const [align, setAlign] = useState(true);
   const [statusTab, setStatusTab] = useState('ALL');
+  // Which drop zone ('A' | 'B' | null) currently has a file dragged over it.
+  const [dragZone, setDragZone] = useState(null);
   const urls = useRef([]);
 
   useEffect(() => () => {
@@ -77,11 +79,41 @@ export default function ChangeView({
     setMessage('');
     setMessageOk(false);
     setStatusTab('ALL');
+    setDragZone(null);
   }, [resetSignal]);
 
   const pick = (which) => (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
+    if (f) assignFile(which, f);
+  };
+
+  // Drag-and-drop for the A/B zones (shared with click-to-choose above).
+  const onDragOverZone = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const onDragEnterZone = (which) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isComparing) setDragZone(which);
+  };
+  const onDragLeaveZone = () => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragZone(null);
+  };
+  const onDropZone = (which) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragZone(null);
+    if (isComparing) return;
+    const f = e.dataTransfer?.files?.[0];
+    if (f) assignFile(which, f);
+  };
+
+  /** Shared file intake for click-to-choose AND drag-and-drop. */
+  const assignFile = (which, f) => {
     if (!f) return;
     const err = validateFile(f);
     if (err) {
@@ -165,16 +197,38 @@ export default function ChangeView({
 
       <div className="detect-grid">
         <div>
-          <label className="drop" title={fileA ? fileA.name : undefined}>
-            {fileA ? <span className="drop-name">A (older): {fileA.name}</span> : 'Image A — Older image (click to choose)'}
-            <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={pick('A')} hidden />
+          <label
+            className={`drop${dragZone === 'A' ? ' dragging' : ''}`}
+            title={fileA ? fileA.name : undefined}
+            onDragOver={onDragOverZone}
+            onDragEnter={onDragEnterZone('A')}
+            onDragLeave={onDragLeaveZone()}
+            onDrop={onDropZone('A')}
+          >
+            {dragZone === 'A'
+              ? 'Drop Image A here…'
+              : fileA
+                ? <span className="drop-name">A (older): {fileA.name}</span>
+                : 'Image A — Older image (click or drag & drop)'}
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.tif,.tiff" onChange={pick('A')} hidden />
           </label>
           {prevA && <img className="preview" src={prevA} alt="Older frame preview (Image A)" />}
         </div>
         <div>
-          <label className="drop" title={fileB ? fileB.name : undefined}>
-            {fileB ? <span className="drop-name">B (newer): {fileB.name}</span> : 'Image B — Newer image (click to choose)'}
-            <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={pick('B')} hidden />
+          <label
+            className={`drop${dragZone === 'B' ? ' dragging' : ''}`}
+            title={fileB ? fileB.name : undefined}
+            onDragOver={onDragOverZone}
+            onDragEnter={onDragEnterZone('B')}
+            onDragLeave={onDragLeaveZone()}
+            onDrop={onDropZone('B')}
+          >
+            {dragZone === 'B'
+              ? 'Drop Image B here…'
+              : fileB
+                ? <span className="drop-name">B (newer): {fileB.name}</span>
+                : 'Image B — Newer image (click or drag & drop)'}
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.tif,.tiff" onChange={pick('B')} hidden />
           </label>
           {prevB && <img className="preview" src={prevB} alt="Newer frame preview (Image B)" />}
         </div>

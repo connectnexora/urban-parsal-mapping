@@ -89,6 +89,12 @@ button.pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-bottom: 12px; cursor: pointer; overflow-wrap: anywhere;
 }
 .drop:hover { border-color: var(--accent); }
+/* Drag-and-drop hover state: accent border + tinted background while a file
+   is dragged over the zone. */
+.drop.dragging {
+  border-color: var(--accent); border-style: solid;
+  background: rgba(56, 189, 248, 0.12); color: var(--text);
+}
 /* Long hash-like filenames (no spaces) used to overflow the label — clamp
    to one ellipsis line; full name stays visible via the title tooltip. */
 .drop-name {

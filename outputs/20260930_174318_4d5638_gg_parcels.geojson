@@ -1,0 +1,137 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "disclaimer": "AI-estimated / approximate parcel boundaries for visualisation and planning exploration only. NOT legally valid cadastral boundaries. Areas and perimeters are derived from pixel geometry and either embedded GeoTIFF spatial tags (when present) or an assumed ground sample distance (GSD) \u2014 see area_source in the response.",
+    "coordinate_system": "image_pixels",
+    "image_width_px": 500,
+    "image_height_px": 375,
+    "gsd_m_per_px": 0.1,
+    "area_source": "estimated",
+    "georeferencing": {
+      "georeferenced": false,
+      "gsd_x": null,
+      "gsd_y": null,
+      "gsd": null,
+      "crs_hint": null,
+      "detail": "No embedded spatial information found.",
+      "rotated": false,
+      "source": "none"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-001",
+        "area_m2_estimated": 153.7,
+        "area_ha_estimated": 0.0154,
+        "perimeter_m_estimated": 109.61,
+        "confidence_approx": 0.662,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              253.0,
+              1.0
+            ],
+            [
+              462.0,
+              21.0
+            ],
+            [
+              478.0,
+              96.0
+            ],
+            [
+              448.0,
+              119.0
+            ],
+            [
+              459.0,
+              136.0
+            ],
+            [
+              433.0,
+              138.0
+            ],
+            [
+              449.0,
+              151.0
+            ],
+            [
+              410.0,
+              220.0
+            ],
+            [
+              461.0,
+              275.0
+            ],
+            [
+              498.0,
+              269.0
+            ],
+            [
+              498.0,
+              1.0
+            ],
+            [
+              253.0,
+              1.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-002",
+        "area_m2_estimated": 51.72,
+        "area_ha_estimated": 0.0052,
+        "perimeter_m_estimated": 78.63,
+        "confidence_approx": 0.492,
+        "method": "classical-watershed-contours",
+        "disclaimer": "AI-estimated/approximate \u2014 not a legal cadastral boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              16.0
+            ],
+            [
+              84.0,
+              31.0
+            ],
+            [
+              80.0,
+              13.0
+            ],
+            [
+              374.0,
+              20.0
+            ],
+            [
+              251.0,
+              1.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

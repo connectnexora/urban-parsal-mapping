@@ -101,7 +101,7 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
 
 APP_VERSION = "0.5.0"
 

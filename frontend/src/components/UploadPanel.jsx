@@ -11,10 +11,10 @@ import {
   getParcelStatus,
 } from '../services/api.js';
 
-const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff'];
+const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff'];
 // Browsers can render these directly; TIFF gets a file card instead.
-const PREVIEWABLE_EXT = ['.jpg', '.jpeg', '.png'];
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/tiff', 'image/x-tiff', 'image/tif'];
+const PREVIEWABLE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'image/x-tiff', 'image/tif'];
 // Must match backend MAX_UPLOAD_BYTES.
 const MAX_BYTES = 100 * 1024 * 1024;
 
@@ -35,12 +35,12 @@ export function formatBytes(n) {
 function validateFile(f) {
   const ext = extOf(f.name);
   if (!ext || !ALLOWED_EXT.includes(ext)) {
-    return `Unsupported file type '${ext || '(none)'}'. Allowed: JPG, JPEG, PNG, TIF/TIFF (GeoTIFF).`;
+    return `Unsupported file type '${ext || '(none)'}'. Allowed: JPG, JPEG, PNG, WEBP, TIF/TIFF (GeoTIFF).`;
   }
   // Some browsers report an empty MIME type (notably for .tif) — only
   // reject when a type IS reported and it isn't an image type we accept.
   if (f.type && !ALLOWED_MIME.includes(f.type.toLowerCase())) {
-    return `Rejected MIME type '${f.type}'. Please choose a JPG, PNG or TIFF image.`;
+    return `Rejected MIME type '${f.type}'. Please choose a JPG, PNG, WEBP or TIFF image.`;
   }
   if (f.size === 0) return 'File is empty (0 bytes).';
   if (f.size > MAX_BYTES) {
@@ -88,6 +88,10 @@ export default function UploadPanel({
   const [fullRunning, setFullRunning] = useState(false);
   const [fullStage, setFullStage] = useState('');
   const urlRef = useRef(null);
+  // Drag-and-drop hover state for the drop zone.
+  const [dragging, setDragging] = useState(false);
+  // Counts nested dragenter/dragleave events so the highlight doesn't flicker.
+  const dragCount = useRef(0);
   // Guards stale auto-uploads: if the user picks file B while file A is
   // still uploading, A's late response is discarded.
   const uploadToken = useRef(0);
@@ -145,6 +149,8 @@ export default function UploadPanel({
     setMessage('');
     setMessageOk(false);
     setUploaded(null);
+    dragCount.current = 0;
+    setDragging(false);
   }, [resetSignal]);
 
   const clearPreview = () => {
@@ -226,6 +232,43 @@ export default function UploadPanel({
   const onSelect = (e) => {
     const f = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
+    if (f) handleFile(f);
+  };
+
+  // Drag-and-drop onto the drop zone. preventDefault on dragover is what
+  // allows the drop event to fire at all.
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const onDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (working) return;
+    dragCount.current += 1;
+    setDragging(true);
+  };
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCount.current = Math.max(0, dragCount.current - 1);
+    if (dragCount.current === 0) setDragging(false);
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCount.current = 0;
+    setDragging(false);
+    if (working) return;
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleFile(f);
+  };
+
+  /**
+   * Shared file intake for click-to-choose AND drag-and-drop: validate,
+   * preview, then auto-upload to the backend.
+   */
+  const handleFile = (f) => {
     if (!f || fullRunning || isDetecting || isExtracting) return;
     clearPreview();
     setUploaded(null);
@@ -546,9 +589,20 @@ export default function UploadPanel({
         <li>○ Report</li>
       </ol>
 
-      <label className="drop" title={file ? file.name : undefined}>
-        {file ? <span className="drop-name">{file.name}</span> : 'Click to choose image (JPG / JPEG / PNG / TIF)'}
-        <input type="file" accept=".jpg,.jpeg,.png,.tif,.tiff" onChange={onSelect} hidden />
+      <label
+        className={`drop${dragging ? ' dragging' : ''}`}
+        title={file ? file.name : undefined}
+        onDragOver={onDragOver}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {dragging
+          ? 'Drop the image here…'
+          : file
+            ? <span className="drop-name">{file.name}</span>
+            : 'Click to choose, or drag & drop an image here (JPG / JPEG / PNG / WEBP / TIF)'}
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,.tif,.tiff" onChange={onSelect} hidden />
       </label>
 
       {fileError && <p className="alert-err">{fileError}</p>}

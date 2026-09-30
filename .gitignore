@@ -24,6 +24,9 @@ models/*.bin
 # Data (user uploads + large imagery)
 data/uploads/*
 !data/uploads/.gitkeep
+data/inria_raw/
+data/dataset/
+runs/
 data/samples/*.tif
 data/samples/*.tiff
 data/samples/*.jpg
